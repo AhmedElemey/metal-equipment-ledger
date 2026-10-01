@@ -244,6 +244,70 @@ void main() {
     expect(await db.watchOrderSummaries(quotations: true).first, isEmpty);
   });
 
+  test('item prices: latest sale and purchase, real orders only', () async {
+    final client = await addParty('عميل');
+    final supplier = await addParty('مورد', PartyKind.seller);
+    Future<void> line(
+      int party,
+      OrderKind kind,
+      DateTime date,
+      int price, {
+      String unit = 'طن',
+      OrderStatus status = OrderStatus.pending,
+    }) => db.saveOrder(
+      OrdersCompanion.insert(
+        partyId: party,
+        kind: kind,
+        date: date,
+        status: Value(status),
+      ),
+      [
+        OrderItemsCompanion.insert(
+          orderId: 0,
+          name: 'صاج',
+          quantity: 1,
+          unit: Value(unit),
+          unitPricePiasters: price,
+        ),
+      ],
+    );
+    await line(supplier, OrderKind.purchase, DateTime(2026, 8, 1), 80000);
+    await line(supplier, OrderKind.purchase, DateTime(2026, 9, 1), 90000);
+    await line(client, OrderKind.sale, DateTime(2026, 9, 5), 100000);
+    await line(client, OrderKind.sale, DateTime(2026, 8, 5), 95000);
+    await line(
+      client,
+      OrderKind.sale,
+      DateTime(2026, 9, 20),
+      1,
+      status: OrderStatus.cancelled,
+    );
+    await line(
+      client,
+      OrderKind.sale,
+      DateTime(2026, 9, 25),
+      2,
+      status: OrderStatus.quotation,
+    );
+    await line(
+      client,
+      OrderKind.sale,
+      DateTime(2026, 9, 10),
+      99000,
+      unit: 'كيلو',
+    );
+    await addOrder(client, OrderKind.sale, date: DateTime(2026, 7, 1));
+
+    final items = await db.watchItemPrices().first;
+    expect(items.map((i) => i.name), ['صاج', 'مسامير']);
+    final sheet = items.first;
+    expect(sheet.lastSale, 99000);
+    expect(sheet.lastSaleAt, DateTime(2026, 9, 10));
+    expect(sheet.lastPurchase, 90000);
+    expect(sheet.unit, 'كيلو');
+    expect(items.last.lastPurchase, isNull);
+  });
+
   test('excel report has the four Arabic sheets', () async {
     final party = await addParty('الحاج محمود');
     await addOrder(party, OrderKind.sale, downPayment: 1000);

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../features/accounts/presentation/collections_screen.dart';
 import '../features/accounts/presentation/statement_screen.dart';
 import '../features/backup/presentation/settings_screen.dart';
+import '../features/items/presentation/items_screen.dart';
 import '../features/dashboard/presentation/dashboard_screen.dart';
 import '../features/orders/presentation/order_details_screen.dart';
 import '../features/orders/presentation/order_edit_screen.dart';
@@ -39,6 +40,7 @@ final router = GoRouter(
       builder: (_, s) => StatementScreen(partyId: _id(s)),
     ),
     GoRoute(path: '/collections', builder: (_, _) => const CollectionsScreen()),
+    GoRoute(path: '/items', builder: (_, _) => const ItemsScreen()),
     GoRoute(path: '/parties/new', builder: (_, _) => const PartyFormScreen()),
     GoRoute(
       path: '/parties/:id',

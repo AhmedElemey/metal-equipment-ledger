@@ -7,6 +7,9 @@ import '../../../core/database/app_database.dart';
 import '../../../core/database/database_provider.dart';
 import '../../../core/formatters.dart';
 import '../../../core/widgets/total_row.dart';
+import '../../items/data/items_providers.dart';
+import '../../items/presentation/item_name_field.dart';
+import '../../items/presentation/item_price_hint.dart';
 import '../../parties/data/parties_providers.dart';
 
 /// The data needed to edit an existing order.
@@ -43,6 +46,7 @@ class _ItemControllers {
   final TextEditingController quantity;
   final TextEditingController unit;
   final TextEditingController price;
+  final nameFocus = FocusNode();
 
   int get lineTotal {
     final q = parseNumber(quantity.text) ?? 0;
@@ -55,6 +59,7 @@ class _ItemControllers {
     quantity.dispose();
     unit.dispose();
     price.dispose();
+    nameFocus.dispose();
   }
 }
 
@@ -168,6 +173,11 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
   @override
   Widget build(BuildContext context) {
     final parties = ref.watch(partiesProvider('')).value ?? const <Party>[];
+    final itemsByName = {
+      for (final i
+          in ref.watch(itemPricesProvider).value ?? const <ItemPrice>[])
+        i.name: i,
+    };
     final total = _total;
     final isNew = widget.existing == null;
     final quotation = _isQuotation;
@@ -248,6 +258,8 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
               _ItemFields(
                 key: ObjectKey(_items[i]),
                 controllers: _items[i],
+                kind: _kind,
+                itemsByName: itemsByName,
                 onChanged: () => setState(() {}),
                 onRemove: _items.length > 1 ? () => _removeItem(i) : null,
               ),
@@ -321,13 +333,29 @@ class _ItemFields extends StatelessWidget {
   const _ItemFields({
     super.key,
     required this.controllers,
+    required this.kind,
+    required this.itemsByName,
     required this.onChanged,
     required this.onRemove,
   });
 
   final _ItemControllers controllers;
+  final OrderKind kind;
+
+  /// Past items and their last prices, for suggestions and hints.
+  final Map<String, ItemPrice> itemsByName;
   final VoidCallback onChanged;
   final VoidCallback? onRemove;
+
+  void _fillFrom(ItemPrice item) {
+    controllers.unit.text = item.unit;
+    final price = kind == OrderKind.sale ? item.lastSale : item.lastPurchase;
+    // Never overwrite a price he already typed.
+    if (price != null && controllers.price.text.trim().isEmpty) {
+      controllers.price.text = piastersToInput(price);
+    }
+    onChanged();
+  }
 
   String? _requiredNumber(String? v) =>
       parseNumber(v ?? '') == null ? 'مطلوب' : null;
@@ -343,14 +371,11 @@ class _ItemFields extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: TextFormField(
+                  child: ItemNameField(
                     controller: controllers.name,
-                    decoration: const InputDecoration(
-                      labelText: 'اسم الصنف *',
-                      hintText: 'مثال: صاج حديد 2 مم',
-                    ),
-                    validator: (v) =>
-                        (v == null || v.trim().isEmpty) ? 'مطلوب' : null,
+                    focusNode: controllers.nameFocus,
+                    items: itemsByName.values,
+                    onSelected: _fillFrom,
                   ),
                 ),
                 if (onRemove != null)
@@ -399,6 +424,30 @@ class _ItemFields extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+            // Rebuilds on its own as the name or price is typed.
+            ListenableBuilder(
+              listenable: Listenable.merge([
+                controllers.name,
+                controllers.price,
+              ]),
+              builder: (_, _) {
+                final known = itemsByName[controllers.name.text.trim()];
+                if (known == null) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: ItemPriceHint(
+                      item: known,
+                      kind: kind,
+                      enteredPrice: parseMoneyToPiasters(
+                        controllers.price.text,
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
             Align(
               alignment: AlignmentDirectional.centerEnd,

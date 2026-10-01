@@ -135,6 +135,35 @@ class DashboardStats {
 
 typedef DataCounts = ({int parties, int orders});
 
+/// An item name from past orders with its latest prices (in piasters).
+class ItemPrice {
+  const ItemPrice({
+    required this.name,
+    required this.unit,
+    required this.lastSale,
+    required this.lastSaleAt,
+    required this.lastPurchase,
+    required this.lastPurchaseAt,
+  });
+
+  final String name;
+
+  /// Unit used the last time this item appeared in any order.
+  final String unit;
+  final int? lastSale;
+  final DateTime? lastSaleAt;
+  final int? lastPurchase;
+  final DateTime? lastPurchaseAt;
+
+  DateTime get lastUsedAt {
+    final s = lastSaleAt;
+    final p = lastPurchaseAt;
+    if (s == null) return p!;
+    if (p == null) return s;
+    return s.isAfter(p) ? s : p;
+  }
+}
+
 /// The file isn't a backup of this app (or is damaged).
 class InvalidBackup implements Exception {
   const InvalidBackup();
@@ -499,6 +528,40 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> deleteOrder(int id) =>
       (delete(orders)..where((o) => o.id.equals(id))).go();
+
+  /// Every item name from real orders with its last sale and purchase
+  /// price, most recently used first.
+  Stream<List<ItemPrice>> watchItemPrices() {
+    return customSelect(
+      'WITH ranked AS ('
+      'SELECT i.name, i.unit, i.unit_price_piasters AS price, o.kind, o.date, '
+      'ROW_NUMBER() OVER (PARTITION BY i.name, o.kind '
+      'ORDER BY o.date DESC, o.id DESC, i.id DESC) AS rn '
+      'FROM order_items i JOIN orders o ON o.id = i.order_id WHERE $_counts) '
+      'SELECT name, '
+      'MAX(CASE WHEN kind = $_sale THEN price END) AS last_sale, '
+      'MAX(CASE WHEN kind = $_sale THEN date END) AS last_sale_at, '
+      'MAX(CASE WHEN kind != $_sale THEN price END) AS last_purchase, '
+      'MAX(CASE WHEN kind != $_sale THEN date END) AS last_purchase_at, '
+      '(SELECT r.unit FROM ranked r WHERE r.name = ranked.name AND r.rn = 1 '
+      'ORDER BY r.date DESC LIMIT 1) AS unit, '
+      'MAX(date) AS last_used '
+      'FROM ranked WHERE rn = 1 GROUP BY name ORDER BY last_used DESC',
+      readsFrom: {orders, orderItems},
+    ).watch().map(
+      (rows) => [
+        for (final r in rows)
+          ItemPrice(
+            name: r.read<String>('name'),
+            unit: r.read<String>('unit'),
+            lastSale: r.readNullable<int>('last_sale'),
+            lastSaleAt: r.readNullable<DateTime>('last_sale_at'),
+            lastPurchase: r.readNullable<int>('last_purchase'),
+            lastPurchaseAt: r.readNullable<DateTime>('last_purchase_at'),
+          ),
+      ],
+    );
+  }
 
   // --------------------------------------------------------------- payments
 

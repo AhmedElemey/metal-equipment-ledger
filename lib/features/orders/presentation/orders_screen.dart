@@ -35,7 +35,16 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
       )),
     );
     return Scaffold(
-      appBar: AppBar(title: const Text('طلباتي')),
+      appBar: AppBar(
+        title: const Text('طلباتي'),
+        actions: [
+          IconButton(
+            tooltip: 'الأصناف والأسعار',
+            icon: const Icon(Icons.inventory_2_outlined),
+            onPressed: () => context.push('/items'),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push(
           _filter == _Filter.quotations

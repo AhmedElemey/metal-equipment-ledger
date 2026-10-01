@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -189,6 +190,80 @@ void main() {
       () => db.watchPartyBalance(client!).first,
     );
     expect(after, 50000);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('item name suggests past items and fills the last price', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final db = AppDatabase(NativeDatabase.memory());
+    await tester.runAsync(() async {
+      final supplier = await db.saveParty(
+        PartiesCompanion.insert(name: 'مورد', kind: PartyKind.seller),
+      );
+      final client = await db.saveParty(
+        PartiesCompanion.insert(name: 'عميل', kind: PartyKind.buyer),
+      );
+      for (final (party, kind, price) in [
+        (supplier, OrderKind.purchase, 90000),
+        (client, OrderKind.sale, 100000),
+      ]) {
+        await db.saveOrder(
+          OrdersCompanion.insert(
+            partyId: party,
+            kind: kind,
+            date: DateTime(2026, 9, 1),
+          ),
+          [
+            OrderItemsCompanion.insert(
+              orderId: 0,
+              name: 'صاج حديد 2 مم',
+              quantity: 1,
+              unit: const Value('طن'),
+              unitPricePiasters: price,
+            ),
+          ],
+        );
+      }
+    });
+    router.go('/orders/new');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db)],
+        child: const MetalLedgerApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'اسم الصنف *'),
+      'صاج',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('بيع 1,000 ج.م • شراء 900 ج.م • طن'), findsOneWidget);
+    await tester.tap(find.text('صاج حديد 2 مم'));
+    await tester.pumpAndSettle();
+
+    String fieldText(String label) => tester
+        .widget<TextFormField>(find.widgetWithText(TextFormField, label))
+        .controller!
+        .text;
+    expect(fieldText('سعر الوحدة'), '1000');
+    expect(fieldText('الوحدة'), 'طن');
+    expect(find.text('آخر شراء 900 ج.م • آخر بيع 1,000 ج.م'), findsOneWidget);
+    expect(find.text('⚠ السعر أقل من آخر سعر شراء'), findsNothing);
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'سعر الوحدة'),
+      '850',
+    );
+    await tester.pump();
+    expect(find.text('⚠ السعر أقل من آخر سعر شراء'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 1));

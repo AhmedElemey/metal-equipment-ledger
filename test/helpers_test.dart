@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:metal_ledger/core/arabic_search.dart';
 import 'package:metal_ledger/core/database/app_database.dart';
 import 'package:metal_ledger/core/formatters.dart';
 import 'package:metal_ledger/features/accounts/data/account_messages.dart';
@@ -8,6 +9,14 @@ import 'package:metal_ledger/features/parties/presentation/contact_launcher.dart
 
 void main() {
   setUpAll(() => initializeDateFormatting('ar'));
+
+  test('arabicMatches ignores spelling variants and word order', () {
+    expect(arabicMatches('أسطوانة غاز', 'اسطوانه'), isTrue);
+    expect(arabicMatches('صاج حديد 2 مم', '2 صاج'), isTrue);
+    expect(arabicMatches('مكنة لحام', 'ماكينة'), isFalse);
+    expect(arabicMatches('مَسامير', 'مسامير'), isTrue);
+    expect(arabicMatches('كرسى', 'كرسي'), isTrue);
+  });
 
   test('parseMoneyToPiasters handles separators and Arabic digits', () {
     expect(parseMoneyToPiasters('1,500.50'), 150050);
