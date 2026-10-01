@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../features/accounts/presentation/collections_screen.dart';
 import '../features/accounts/presentation/statement_screen.dart';
 import '../features/backup/presentation/settings_screen.dart';
+import '../features/cheques/presentation/cheques_screen.dart';
 import '../features/expenses/presentation/expenses_screen.dart';
 import '../features/items/presentation/items_screen.dart';
 import '../features/dashboard/presentation/dashboard_screen.dart';
@@ -43,6 +44,7 @@ final router = GoRouter(
     ),
     GoRoute(path: '/collections', builder: (_, _) => const CollectionsScreen()),
     GoRoute(path: '/expenses', builder: (_, _) => const ExpensesScreen()),
+    GoRoute(path: '/cheques', builder: (_, _) => const ChequesScreen()),
     GoRoute(path: '/report', builder: (_, _) => const MonthlyReportScreen()),
     GoRoute(
       path: '/items',

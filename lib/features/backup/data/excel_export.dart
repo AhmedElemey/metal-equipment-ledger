@@ -139,6 +139,27 @@ Future<List<int>> buildExcelReport(AppDatabase db) async {
     ]);
   }
 
+  final chequesSheet = sheet('الشيكات', [
+    'تاريخ الاستحقاق',
+    'العميل / المورد',
+    'النوع',
+    'المبلغ',
+    'رقم الشيك',
+    'البنك',
+    'الحالة',
+  ]);
+  for (final (:cheque, :partyName) in await db.watchCheques().first) {
+    chequesSheet.appendRow([
+      DateCellValue.fromDateTime(cheque.dueDate),
+      t(partyName),
+      t(cheque.direction == PaymentDirection.received ? 'مستلم' : 'صادر'),
+      money(cheque.amountPiasters),
+      t(cheque.number),
+      t(cheque.bank),
+      t(cheque.status.label),
+    ]);
+  }
+
   final stockSheet = sheet('المخزون', [
     'الصنف',
     'الوحدة',

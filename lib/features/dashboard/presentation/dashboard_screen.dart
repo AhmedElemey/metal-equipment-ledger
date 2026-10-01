@@ -8,6 +8,7 @@ import '../../../core/formatters.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../cheques/presentation/cheques_screen.dart';
 import '../../items/data/items_providers.dart';
 import '../../orders/data/orders_providers.dart';
 import '../../orders/presentation/order_tile.dart';
@@ -22,6 +23,7 @@ class DashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final stats = ref.watch(dashboardProvider).value;
+    final chequesDue = ref.watch(chequesDueSoonProvider).value ?? 0;
     final lowStock = ref.watch(
       itemsProvider.select(
         (items) => items.value?.where((i) => i.isLow).length ?? 0,
@@ -80,6 +82,24 @@ class DashboardScreen extends ConsumerWidget {
                   subtitle: const Text('اضغط لعرض القائمة وإرسال تذكير'),
                   trailing: const Icon(Icons.chevron_left),
                   onTap: () => context.push('/collections'),
+                ),
+              ),
+            ),
+          if (chequesDue > 0)
+            SliverToBoxAdapter(
+              child: Card(
+                color: const Color(0xFFE3F2FD),
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.request_page_outlined,
+                    color: AppColors.purchase,
+                  ),
+                  title: Text(
+                    'الشيكات: $chequesDue شيك يستحق خلال '
+                    '$chequeWarningDays أيام',
+                  ),
+                  trailing: const Icon(Icons.chevron_left),
+                  onTap: () => context.push('/cheques'),
                 ),
               ),
             ),
@@ -150,6 +170,7 @@ class DashboardScreen extends ConsumerWidget {
                   'التقرير الشهري',
                   '/report',
                 ),
+                _ToolTile(Icons.request_page_outlined, 'الشيكات', '/cheques'),
               ],
             ),
           ),

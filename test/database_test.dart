@@ -531,6 +531,46 @@ void main() {
     });
   });
 
+  test('cheques move the balance only while cleared', () async {
+    final client = await addParty('عميل');
+    await addOrder(client, OrderKind.sale); // owes 2,951.50
+    final id = await db.addCheque(
+      ChequesCompanion.insert(
+        partyId: client,
+        direction: PaymentDirection.received,
+        amountPiasters: 200000,
+        number: const Value('1234'),
+        dueDate: DateTime(2026, 10, 20),
+      ),
+    );
+    Future<int> balance() => db.watchPartyBalance(client).first;
+
+    expect(await balance(), orderTotal);
+    expect(await db.watchChequesDueCount(DateTime(2026, 10, 27)).first, 1);
+    expect(await db.watchChequesDueCount(DateTime(2026, 10, 19)).first, 0);
+    expect(await db.hasHistory(client), isTrue);
+
+    await db.setChequeStatus(id, ChequeStatus.cleared, DateTime(2026, 10, 20));
+    expect(await balance(), orderTotal - 200000);
+    final statement = await db.watchStatement(client).first;
+    expect(statement.last.note, 'شيك رقم 1234');
+    expect(await db.watchChequesDueCount(DateTime(2027)).first, 0);
+
+    // Clearing twice doesn't pay twice.
+    await db.setChequeStatus(id, ChequeStatus.cleared, DateTime(2026, 10, 21));
+    expect(await db.select(db.payments).get(), hasLength(1));
+
+    // It bounced after all: the payment goes away.
+    await db.setChequeStatus(id, ChequeStatus.bounced, DateTime(2026, 10, 22));
+    expect(await balance(), orderTotal);
+    expect(await db.select(db.payments).get(), isEmpty);
+
+    await db.setChequeStatus(id, ChequeStatus.cleared, DateTime(2026, 10, 23));
+    await db.deleteCheque(id);
+    expect(await balance(), orderTotal);
+    expect(await db.select(db.cheques).get(), isEmpty);
+  });
+
   test('excel report has the four Arabic sheets', () async {
     final party = await addParty('الحاج محمود');
     await addOrder(party, OrderKind.sale, downPayment: 1000);

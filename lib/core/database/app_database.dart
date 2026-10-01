@@ -18,6 +18,9 @@ enum OrderKind { sale, purchase }
 /// never counts towards balances, totals or collections.
 enum OrderStatus { pending, inProgress, delivered, cancelled, quotation }
 
+/// Stored by index: only ever append new values.
+enum ChequeStatus { pending, cleared, bounced }
+
 /// [received]: money from the party to us (settles sales).
 /// [paid]: money from us to the party (settles purchases).
 enum PaymentDirection { received, paid }
@@ -105,6 +108,33 @@ class ItemSettings extends Table {
 
   @override
   Set<Column> get primaryKey => {itemName};
+}
+
+/// A post-dated cheque. It doesn't touch any balance until it clears; then
+/// a payment is recorded and linked here (and removed if it later bounces).
+@TableIndex(name: 'cheques_due', columns: {#dueDate})
+class Cheques extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get partyId =>
+      integer().references(Parties, #id, onDelete: KeyAction.restrict)();
+
+  /// [PaymentDirection.received]: a cheque he got; [PaymentDirection.paid]:
+  /// one he wrote.
+  IntColumn get direction => intEnum<PaymentDirection>()();
+  IntColumn get amountPiasters => integer()();
+  TextColumn get number => text().nullable()();
+  TextColumn get bank => text().nullable()();
+  DateTimeColumn get dueDate => dateTime()();
+  IntColumn get status =>
+      intEnum<ChequeStatus>().withDefault(const Constant(0))();
+
+  /// The payment recorded when the cheque cleared.
+  IntColumn get paymentId => integer().nullable().references(
+    Payments,
+    #id,
+    onDelete: KeyAction.setNull,
+  )();
+  TextColumn get note => text().nullable()();
 }
 
 /// Business costs not tied to an order: transport, loading, rent…
@@ -362,6 +392,7 @@ const _partyBalanceSql =
     StockAdjustments,
     ItemSettings,
     Expenses,
+    Cheques,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -370,7 +401,7 @@ class AppDatabase extends _$AppDatabase {
   static const fileName = 'metal_ledger';
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -407,6 +438,10 @@ class AppDatabase extends _$AppDatabase {
         ]) {
           await m.createIndex(index);
         }
+      }
+      if (from < 6) {
+        await m.createTable(cheques);
+        await m.createIndex(chequesDue);
       }
     },
     beforeOpen: (details) async {
@@ -449,7 +484,8 @@ class AppDatabase extends _$AppDatabase {
   Future<bool> hasHistory(int partyId) async {
     final row = await customSelect(
       'SELECT EXISTS(SELECT 1 FROM orders WHERE party_id = ?1) '
-      'OR EXISTS(SELECT 1 FROM payments WHERE party_id = ?1) AS has',
+      'OR EXISTS(SELECT 1 FROM payments WHERE party_id = ?1) '
+      'OR EXISTS(SELECT 1 FROM cheques WHERE party_id = ?1) AS has',
       variables: [Variable.withInt(partyId)],
     ).getSingle();
     return row.read<bool>('has');
@@ -841,6 +877,81 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  // ---------------------------------------------------------------- cheques
+
+  /// Cheques with their party's name; pending ones by due date first.
+  Stream<List<({Cheque cheque, String partyName})>> watchCheques() {
+    final q =
+        select(cheques)
+            .join([innerJoin(parties, parties.id.equalsExp(cheques.partyId))])
+          ..orderBy([
+            OrderingTerm.asc(cheques.status),
+            OrderingTerm.asc(cheques.dueDate),
+          ]);
+    return q.watch().map(
+      (rows) => [
+        for (final r in rows)
+          (cheque: r.readTable(cheques), partyName: r.readTable(parties).name),
+      ],
+    );
+  }
+
+  /// Pending cheques due on or before [until].
+  Stream<int> watchChequesDueCount(DateTime until) {
+    final count = cheques.id.count();
+    final q = selectOnly(cheques)
+      ..addColumns([count])
+      ..where(cheques.status.equalsValue(ChequeStatus.pending))
+      ..where(cheques.dueDate.isSmallerOrEqualValue(until));
+    return q.map((r) => r.read(count) ?? 0).watchSingle();
+  }
+
+  Future<int> addCheque(ChequesCompanion entry) => into(cheques).insert(entry);
+
+  /// Moves a cheque to [status], keeping its payment in step: clearing
+  /// records a payment dated [today]; any other status removes it.
+  Future<void> setChequeStatus(int id, ChequeStatus status, DateTime today) {
+    return transaction(() async {
+      final c = await (select(
+        cheques,
+      )..where((c) => c.id.equals(id))).getSingle();
+      if (c.status == status) return;
+      final oldPayment = c.paymentId;
+      int? paymentId;
+      if (status == ChequeStatus.cleared) {
+        paymentId = await into(payments).insert(
+          PaymentsCompanion.insert(
+            partyId: c.partyId,
+            direction: c.direction,
+            amountPiasters: c.amountPiasters,
+            date: today,
+            note: Value(c.number == null ? 'شيك' : 'شيك رقم ${c.number}'),
+          ),
+        );
+      }
+      await (update(cheques)..where((c) => c.id.equals(id))).write(
+        ChequesCompanion(status: Value(status), paymentId: Value(paymentId)),
+      );
+      if (oldPayment != null) {
+        await (delete(payments)..where((p) => p.id.equals(oldPayment))).go();
+      }
+    });
+  }
+
+  /// Deletes a cheque and the payment it created, if any.
+  Future<void> deleteCheque(int id) {
+    return transaction(() async {
+      final c = await (select(
+        cheques,
+      )..where((c) => c.id.equals(id))).getSingle();
+      await (delete(cheques)..where((c) => c.id.equals(id))).go();
+      final paymentId = c.paymentId;
+      if (paymentId != null) {
+        await (delete(payments)..where((p) => p.id.equals(paymentId))).go();
+      }
+    });
+  }
+
   // --------------------------------------------------------------- expenses
 
   /// Expenses dated within [from, to), newest first.
@@ -962,6 +1073,7 @@ class AppDatabase extends _$AppDatabase {
       stockAdjustments,
       itemSettings,
       expenses,
+      cheques,
     ];
     await customStatement('ATTACH DATABASE ? AS backup', [backup.path]);
     try {

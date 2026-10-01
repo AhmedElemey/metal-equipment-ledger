@@ -17,6 +17,7 @@ Every evening the data is backed up to Google Drive.
 | **المصروفات** | Business costs by month (transport, loading, rent, electricity, wages, maintenance, other) with a monthly total. They feed the monthly profit. |
 | **الربح والتقرير الشهري** | Estimated profit on every sale = (sale price − average purchase price) × quantity, for items with a known purchase price; lines without one are flagged instead of counted as pure profit. A monthly report (sales, purchases, collections, payments to suppliers, expenses, gross and net profit, top clients and items) can be shared as a PDF. |
 | **حاسبة الوزن** | On any order line: pick the metal and shape (plate, flat bar, round bar/rebar, pipe, tube, angle), enter dimensions, length and pieces, and the weight fills the quantity in kilos or tons, so he can price per kilo. |
+| **الشيكات** | Cheques received or written, with due dates. They don't affect balances until marked "تم الصرف", which records the payment; a bounced cheque removes it again. The home screen warns about cheques due within 7 days. |
 | **كشف حساب** | Per client/supplier: every order and payment with a running balance (عليه / له), record payments on account, send the statement on WhatsApp |
 | **التحصيل** | Everyone who owes us, biggest first, with the time since they last paid, a "متأخر" (overdue) flag after 30 days without payment, a one-tap polite WhatsApp reminder, and when they were last reminded |
 | **العملاء** | Clients and suppliers (or both), search by name or phone, one-tap call or WhatsApp, balance, full order history |

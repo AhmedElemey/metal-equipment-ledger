@@ -41,7 +41,7 @@ to him versus effort.
 |---|---|---|
 | 11 | **Multi-user** (owner + employee) with a cloud database (e.g. Firebase/Supabase) and roles (the employee can't see profit) | Once someone else takes orders. |
 | 12 | **Photos of equipment / delivery receipts** attached to orders | Proof of delivery and condition, useful for used equipment. |
-| 13 | **Cheques (شيكات) tracking** with due-date alerts | Common for larger B2B deals. |
+| 13 | ✅ **Cheques (شيكات) tracking** — done in v1.9 with due-date alerts | Common for larger B2B deals. |
 | 14 | **Voice-to-text** for voice notes, so they can be searched | Find "the client who wanted 2 mm sheet" months later. |
 
 ## 3. What I deliberately left out of v1

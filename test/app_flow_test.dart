@@ -570,6 +570,56 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 1));
   });
+
+  testWidgets('record a cheque, then clear it', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final db = AppDatabase(NativeDatabase.memory());
+    final client = await tester.runAsync(
+      () => db.saveParty(
+        PartiesCompanion.insert(name: 'ورشة النور', kind: PartyKind.buyer),
+      ),
+    );
+    router.go('/cheques');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db)],
+        child: const MetalLedgerApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('شيك جديد'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(DropdownMenu<Party>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ورشة النور').last);
+    await tester.pumpAndSettle();
+    expect(find.text('استلمته منه'), findsNothing); // a client: received
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'المبلغ'),
+      '5000',
+    );
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('من ورشة النور'), findsOneWidget);
+    expect(find.textContaining('اليوم'), findsOneWidget); // due today
+    await tester.tap(find.text('قيد التحصيل').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تم الصرف'));
+    await tester.pumpAndSettle();
+
+    final balance = await tester.runAsync(
+      () => db.watchPartyBalance(client!).first,
+    );
+    expect(balance, -500000); // paid in advance
+    expect(find.textContaining('من ورشة النور'), findsNothing); // not pending
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
 }
 
 class _SlowWrites extends QueryInterceptor {
