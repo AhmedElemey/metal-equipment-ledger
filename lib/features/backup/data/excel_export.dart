@@ -122,6 +122,25 @@ Future<List<int>> buildExcelReport(AppDatabase db) async {
     ]);
   }
 
+  final stockSheet = sheet('المخزون', [
+    'الصنف',
+    'الوحدة',
+    'الكمية',
+    'حد التنبيه',
+    'آخر سعر شراء',
+    'آخر سعر بيع',
+  ]);
+  for (final i in await db.watchItems().first) {
+    stockSheet.appendRow([
+      t(i.name),
+      t(i.unit),
+      i.tracked ? DoubleCellValue(i.stock) : null,
+      i.minQuantity == null ? null : DoubleCellValue(i.minQuantity!),
+      i.lastPurchase == null ? null : money(i.lastPurchase!),
+      i.lastSale == null ? null : money(i.lastSale!),
+    ]);
+  }
+
   excel.setDefaultSheet('الطلبات');
   excel.delete(defaultSheet);
   return excel.encode()!;

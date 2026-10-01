@@ -39,7 +39,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
         title: const Text('طلباتي'),
         actions: [
           IconButton(
-            tooltip: 'الأصناف والأسعار',
+            tooltip: 'الأصناف والمخزون',
             icon: const Icon(Icons.inventory_2_outlined),
             onPressed: () => context.push('/items'),
           ),

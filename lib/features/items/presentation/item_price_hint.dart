@@ -13,9 +13,10 @@ class ItemPriceHint extends StatelessWidget {
     required this.kind,
     required this.partyPrice,
     required this.enteredPrice,
+    required this.enteredQuantity,
   });
 
-  final ItemPrice item;
+  final ItemSummary item;
   final OrderKind kind;
 
   /// What this order's client/supplier got last time, if ever.
@@ -23,6 +24,9 @@ class ItemPriceHint extends StatelessWidget {
 
   /// The unit price typed in the form, in piasters (null if empty/invalid).
   final int? enteredPrice;
+
+  /// The quantity typed in the form (null if empty/invalid).
+  final double? enteredQuantity;
 
   @override
   Widget build(BuildContext context) {
@@ -34,6 +38,9 @@ class ItemPriceHint extends StatelessWidget {
         enteredPrice != null &&
         enteredPrice! < lastPurchase;
     final party = partyPrice;
+    final showStock = kind == OrderKind.sale && item.tracked;
+    final overStock =
+        showStock && enteredQuantity != null && enteredQuantity! > item.stock;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -50,6 +57,19 @@ class ItemPriceHint extends StatelessWidget {
           ].join(' • '),
           style: const TextStyle(color: Colors.black54, fontSize: 13),
         ),
+        if (showStock)
+          Text(
+            'المتاح في المخزون: ${formatQuantity(item.stock)} ${item.unit}',
+            style: TextStyle(color: overStock ? AppColors.danger : null),
+          ),
+        if (overStock)
+          const Text(
+            '⚠ الكمية أكبر من المتاح في المخزون',
+            style: TextStyle(
+              color: AppColors.danger,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         if (belowCost)
           Text(
             '⚠ السعر أقل من آخر سعر شراء',

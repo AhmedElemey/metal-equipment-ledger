@@ -18,18 +18,18 @@ class ItemNameField extends StatelessWidget {
 
   final TextEditingController controller;
   final FocusNode focusNode;
-  final Iterable<ItemPrice> items;
+  final Iterable<ItemSummary> items;
 
   /// This order's client/supplier's last price per item name.
   final Map<String, PartyItemPrice> partyPrices;
   final OrderKind kind;
-  final ValueChanged<ItemPrice> onSelected;
+  final ValueChanged<ItemSummary> onSelected;
 
   static const _maxOptions = 8;
 
   @override
   Widget build(BuildContext context) {
-    return RawAutocomplete<ItemPrice>(
+    return RawAutocomplete<ItemSummary>(
       textEditingController: controller,
       focusNode: focusNode,
       displayStringForOption: (item) => item.name,
@@ -84,7 +84,7 @@ class ItemNameField extends StatelessWidget {
   }
 }
 
-String _pricesLine(ItemPrice item, PartyItemPrice? party, OrderKind kind) => [
+String _pricesLine(ItemSummary item, PartyItemPrice? party, OrderKind kind) => [
   if (party != null)
     '${kind == OrderKind.sale ? 'لهذا العميل' : 'لهذا المورد'} '
         '${formatMoney(party.price)}',

@@ -298,7 +298,7 @@ void main() {
     );
     await addOrder(client, OrderKind.sale, date: DateTime(2026, 7, 1));
 
-    final items = await db.watchItemPrices().first;
+    final items = await db.watchItems().first;
     expect(items.map((i) => i.name), ['صاج', 'مسامير']);
     final sheet = items.first;
     expect(sheet.lastSale, 99000);
@@ -356,6 +356,49 @@ void main() {
     );
   });
 
+  test('stock: purchases − sales + counts; only tracked items alert', () async {
+    final client = await addParty('عميل');
+    final supplier = await addParty('مورد', PartyKind.seller);
+    // Each order: 2.5 صاج + 3 مسامير.
+    await addOrder(supplier, OrderKind.purchase);
+    await addOrder(supplier, OrderKind.purchase);
+    await addOrder(client, OrderKind.sale);
+    await addOrder(client, OrderKind.sale, status: OrderStatus.cancelled);
+    await addOrder(client, OrderKind.sale, status: OrderStatus.quotation);
+
+    Future<ItemSummary> item(String name) async =>
+        (await db.watchItems().first).singleWhere((i) => i.name == name);
+
+    var sheet = await item('صاج');
+    expect(sheet.stock, 2.5);
+    expect(sheet.tracked, isFalse);
+    expect(sheet.isLow, isFalse);
+
+    // A physical count finds 2 (not 2.5) and sets an alert at 3.
+    await db.recordStockCount(
+      'صاج',
+      current: sheet.stock,
+      actual: 2,
+      date: DateTime(2026, 10, 1),
+    );
+    await db.saveItemSettings('صاج', unit: 'طن', minQuantity: 3);
+    sheet = await item('صاج');
+    expect(sheet.stock, 2);
+    expect(sheet.unit, 'طن');
+    expect(sheet.tracked, isTrue);
+    expect(sheet.isLow, isTrue);
+
+    // An item that exists only as opening stock.
+    await db.recordStockCount(
+      'زاوية',
+      current: 0,
+      actual: 40,
+      date: DateTime(2026, 10, 1),
+    );
+    final angle = await item('زاوية');
+    expect((angle.stock, angle.unit, angle.lastSale), (40.0, 'قطعة', null));
+  });
+
   test('excel report has the four Arabic sheets', () async {
     final party = await addParty('الحاج محمود');
     await addOrder(party, OrderKind.sale, downPayment: 1000);
@@ -363,7 +406,13 @@ void main() {
     final excel = Excel.decodeBytes(await buildExcelReport(db));
     expect(
       excel.tables.keys,
-      containsAll(['الطلبات', 'الأصناف', 'الدفعات', 'العملاء والموردين']),
+      containsAll([
+        'الطلبات',
+        'الأصناف',
+        'الدفعات',
+        'العملاء والموردين',
+        'المخزون',
+      ]),
     );
     expect(excel.tables['الطلبات']!.maxRows, 2);
     expect(excel.tables['الأصناف']!.maxRows, 3);

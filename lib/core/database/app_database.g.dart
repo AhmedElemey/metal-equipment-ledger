@@ -2291,6 +2291,617 @@ class VoiceNotesCompanion extends UpdateCompanion<VoiceNote> {
   }
 }
 
+class $StockAdjustmentsTable extends StockAdjustments
+    with TableInfo<$StockAdjustmentsTable, StockAdjustment> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $StockAdjustmentsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _itemNameMeta = const VerificationMeta(
+    'itemName',
+  );
+  @override
+  late final GeneratedColumn<String> itemName = GeneratedColumn<String>(
+    'item_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _quantityMeta = const VerificationMeta(
+    'quantity',
+  );
+  @override
+  late final GeneratedColumn<double> quantity = GeneratedColumn<double>(
+    'quantity',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _dateMeta = const VerificationMeta('date');
+  @override
+  late final GeneratedColumn<DateTime> date = GeneratedColumn<DateTime>(
+    'date',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _noteMeta = const VerificationMeta('note');
+  @override
+  late final GeneratedColumn<String> note = GeneratedColumn<String>(
+    'note',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, itemName, quantity, date, note];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'stock_adjustments';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<StockAdjustment> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('item_name')) {
+      context.handle(
+        _itemNameMeta,
+        itemName.isAcceptableOrUnknown(data['item_name']!, _itemNameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_itemNameMeta);
+    }
+    if (data.containsKey('quantity')) {
+      context.handle(
+        _quantityMeta,
+        quantity.isAcceptableOrUnknown(data['quantity']!, _quantityMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_quantityMeta);
+    }
+    if (data.containsKey('date')) {
+      context.handle(
+        _dateMeta,
+        date.isAcceptableOrUnknown(data['date']!, _dateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_dateMeta);
+    }
+    if (data.containsKey('note')) {
+      context.handle(
+        _noteMeta,
+        note.isAcceptableOrUnknown(data['note']!, _noteMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  StockAdjustment map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return StockAdjustment(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      itemName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}item_name'],
+      )!,
+      quantity: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}quantity'],
+      )!,
+      date: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}date'],
+      )!,
+      note: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}note'],
+      ),
+    );
+  }
+
+  @override
+  $StockAdjustmentsTable createAlias(String alias) {
+    return $StockAdjustmentsTable(attachedDatabase, alias);
+  }
+}
+
+class StockAdjustment extends DataClass implements Insertable<StockAdjustment> {
+  final int id;
+  final String itemName;
+  final double quantity;
+  final DateTime date;
+  final String? note;
+  const StockAdjustment({
+    required this.id,
+    required this.itemName,
+    required this.quantity,
+    required this.date,
+    this.note,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['item_name'] = Variable<String>(itemName);
+    map['quantity'] = Variable<double>(quantity);
+    map['date'] = Variable<DateTime>(date);
+    if (!nullToAbsent || note != null) {
+      map['note'] = Variable<String>(note);
+    }
+    return map;
+  }
+
+  StockAdjustmentsCompanion toCompanion(bool nullToAbsent) {
+    return StockAdjustmentsCompanion(
+      id: Value(id),
+      itemName: Value(itemName),
+      quantity: Value(quantity),
+      date: Value(date),
+      note: note == null && nullToAbsent ? const Value.absent() : Value(note),
+    );
+  }
+
+  factory StockAdjustment.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return StockAdjustment(
+      id: serializer.fromJson<int>(json['id']),
+      itemName: serializer.fromJson<String>(json['itemName']),
+      quantity: serializer.fromJson<double>(json['quantity']),
+      date: serializer.fromJson<DateTime>(json['date']),
+      note: serializer.fromJson<String?>(json['note']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'itemName': serializer.toJson<String>(itemName),
+      'quantity': serializer.toJson<double>(quantity),
+      'date': serializer.toJson<DateTime>(date),
+      'note': serializer.toJson<String?>(note),
+    };
+  }
+
+  StockAdjustment copyWith({
+    int? id,
+    String? itemName,
+    double? quantity,
+    DateTime? date,
+    Value<String?> note = const Value.absent(),
+  }) => StockAdjustment(
+    id: id ?? this.id,
+    itemName: itemName ?? this.itemName,
+    quantity: quantity ?? this.quantity,
+    date: date ?? this.date,
+    note: note.present ? note.value : this.note,
+  );
+  StockAdjustment copyWithCompanion(StockAdjustmentsCompanion data) {
+    return StockAdjustment(
+      id: data.id.present ? data.id.value : this.id,
+      itemName: data.itemName.present ? data.itemName.value : this.itemName,
+      quantity: data.quantity.present ? data.quantity.value : this.quantity,
+      date: data.date.present ? data.date.value : this.date,
+      note: data.note.present ? data.note.value : this.note,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('StockAdjustment(')
+          ..write('id: $id, ')
+          ..write('itemName: $itemName, ')
+          ..write('quantity: $quantity, ')
+          ..write('date: $date, ')
+          ..write('note: $note')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, itemName, quantity, date, note);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is StockAdjustment &&
+          other.id == this.id &&
+          other.itemName == this.itemName &&
+          other.quantity == this.quantity &&
+          other.date == this.date &&
+          other.note == this.note);
+}
+
+class StockAdjustmentsCompanion extends UpdateCompanion<StockAdjustment> {
+  final Value<int> id;
+  final Value<String> itemName;
+  final Value<double> quantity;
+  final Value<DateTime> date;
+  final Value<String?> note;
+  const StockAdjustmentsCompanion({
+    this.id = const Value.absent(),
+    this.itemName = const Value.absent(),
+    this.quantity = const Value.absent(),
+    this.date = const Value.absent(),
+    this.note = const Value.absent(),
+  });
+  StockAdjustmentsCompanion.insert({
+    this.id = const Value.absent(),
+    required String itemName,
+    required double quantity,
+    required DateTime date,
+    this.note = const Value.absent(),
+  }) : itemName = Value(itemName),
+       quantity = Value(quantity),
+       date = Value(date);
+  static Insertable<StockAdjustment> custom({
+    Expression<int>? id,
+    Expression<String>? itemName,
+    Expression<double>? quantity,
+    Expression<DateTime>? date,
+    Expression<String>? note,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (itemName != null) 'item_name': itemName,
+      if (quantity != null) 'quantity': quantity,
+      if (date != null) 'date': date,
+      if (note != null) 'note': note,
+    });
+  }
+
+  StockAdjustmentsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? itemName,
+    Value<double>? quantity,
+    Value<DateTime>? date,
+    Value<String?>? note,
+  }) {
+    return StockAdjustmentsCompanion(
+      id: id ?? this.id,
+      itemName: itemName ?? this.itemName,
+      quantity: quantity ?? this.quantity,
+      date: date ?? this.date,
+      note: note ?? this.note,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (itemName.present) {
+      map['item_name'] = Variable<String>(itemName.value);
+    }
+    if (quantity.present) {
+      map['quantity'] = Variable<double>(quantity.value);
+    }
+    if (date.present) {
+      map['date'] = Variable<DateTime>(date.value);
+    }
+    if (note.present) {
+      map['note'] = Variable<String>(note.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('StockAdjustmentsCompanion(')
+          ..write('id: $id, ')
+          ..write('itemName: $itemName, ')
+          ..write('quantity: $quantity, ')
+          ..write('date: $date, ')
+          ..write('note: $note')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ItemSettingsTable extends ItemSettings
+    with TableInfo<$ItemSettingsTable, ItemSetting> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ItemSettingsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _itemNameMeta = const VerificationMeta(
+    'itemName',
+  );
+  @override
+  late final GeneratedColumn<String> itemName = GeneratedColumn<String>(
+    'item_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _unitMeta = const VerificationMeta('unit');
+  @override
+  late final GeneratedColumn<String> unit = GeneratedColumn<String>(
+    'unit',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _minQuantityMeta = const VerificationMeta(
+    'minQuantity',
+  );
+  @override
+  late final GeneratedColumn<double> minQuantity = GeneratedColumn<double>(
+    'min_quantity',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [itemName, unit, minQuantity];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'item_settings';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ItemSetting> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('item_name')) {
+      context.handle(
+        _itemNameMeta,
+        itemName.isAcceptableOrUnknown(data['item_name']!, _itemNameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_itemNameMeta);
+    }
+    if (data.containsKey('unit')) {
+      context.handle(
+        _unitMeta,
+        unit.isAcceptableOrUnknown(data['unit']!, _unitMeta),
+      );
+    }
+    if (data.containsKey('min_quantity')) {
+      context.handle(
+        _minQuantityMeta,
+        minQuantity.isAcceptableOrUnknown(
+          data['min_quantity']!,
+          _minQuantityMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {itemName};
+  @override
+  ItemSetting map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ItemSetting(
+      itemName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}item_name'],
+      )!,
+      unit: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}unit'],
+      ),
+      minQuantity: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}min_quantity'],
+      ),
+    );
+  }
+
+  @override
+  $ItemSettingsTable createAlias(String alias) {
+    return $ItemSettingsTable(attachedDatabase, alias);
+  }
+}
+
+class ItemSetting extends DataClass implements Insertable<ItemSetting> {
+  final String itemName;
+  final String? unit;
+
+  /// Alert when stock falls to or below this.
+  final double? minQuantity;
+  const ItemSetting({required this.itemName, this.unit, this.minQuantity});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['item_name'] = Variable<String>(itemName);
+    if (!nullToAbsent || unit != null) {
+      map['unit'] = Variable<String>(unit);
+    }
+    if (!nullToAbsent || minQuantity != null) {
+      map['min_quantity'] = Variable<double>(minQuantity);
+    }
+    return map;
+  }
+
+  ItemSettingsCompanion toCompanion(bool nullToAbsent) {
+    return ItemSettingsCompanion(
+      itemName: Value(itemName),
+      unit: unit == null && nullToAbsent ? const Value.absent() : Value(unit),
+      minQuantity: minQuantity == null && nullToAbsent
+          ? const Value.absent()
+          : Value(minQuantity),
+    );
+  }
+
+  factory ItemSetting.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ItemSetting(
+      itemName: serializer.fromJson<String>(json['itemName']),
+      unit: serializer.fromJson<String?>(json['unit']),
+      minQuantity: serializer.fromJson<double?>(json['minQuantity']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'itemName': serializer.toJson<String>(itemName),
+      'unit': serializer.toJson<String?>(unit),
+      'minQuantity': serializer.toJson<double?>(minQuantity),
+    };
+  }
+
+  ItemSetting copyWith({
+    String? itemName,
+    Value<String?> unit = const Value.absent(),
+    Value<double?> minQuantity = const Value.absent(),
+  }) => ItemSetting(
+    itemName: itemName ?? this.itemName,
+    unit: unit.present ? unit.value : this.unit,
+    minQuantity: minQuantity.present ? minQuantity.value : this.minQuantity,
+  );
+  ItemSetting copyWithCompanion(ItemSettingsCompanion data) {
+    return ItemSetting(
+      itemName: data.itemName.present ? data.itemName.value : this.itemName,
+      unit: data.unit.present ? data.unit.value : this.unit,
+      minQuantity: data.minQuantity.present
+          ? data.minQuantity.value
+          : this.minQuantity,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ItemSetting(')
+          ..write('itemName: $itemName, ')
+          ..write('unit: $unit, ')
+          ..write('minQuantity: $minQuantity')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(itemName, unit, minQuantity);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ItemSetting &&
+          other.itemName == this.itemName &&
+          other.unit == this.unit &&
+          other.minQuantity == this.minQuantity);
+}
+
+class ItemSettingsCompanion extends UpdateCompanion<ItemSetting> {
+  final Value<String> itemName;
+  final Value<String?> unit;
+  final Value<double?> minQuantity;
+  final Value<int> rowid;
+  const ItemSettingsCompanion({
+    this.itemName = const Value.absent(),
+    this.unit = const Value.absent(),
+    this.minQuantity = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ItemSettingsCompanion.insert({
+    required String itemName,
+    this.unit = const Value.absent(),
+    this.minQuantity = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : itemName = Value(itemName);
+  static Insertable<ItemSetting> custom({
+    Expression<String>? itemName,
+    Expression<String>? unit,
+    Expression<double>? minQuantity,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (itemName != null) 'item_name': itemName,
+      if (unit != null) 'unit': unit,
+      if (minQuantity != null) 'min_quantity': minQuantity,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ItemSettingsCompanion copyWith({
+    Value<String>? itemName,
+    Value<String?>? unit,
+    Value<double?>? minQuantity,
+    Value<int>? rowid,
+  }) {
+    return ItemSettingsCompanion(
+      itemName: itemName ?? this.itemName,
+      unit: unit ?? this.unit,
+      minQuantity: minQuantity ?? this.minQuantity,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (itemName.present) {
+      map['item_name'] = Variable<String>(itemName.value);
+    }
+    if (unit.present) {
+      map['unit'] = Variable<String>(unit.value);
+    }
+    if (minQuantity.present) {
+      map['min_quantity'] = Variable<double>(minQuantity.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ItemSettingsCompanion(')
+          ..write('itemName: $itemName, ')
+          ..write('unit: $unit, ')
+          ..write('minQuantity: $minQuantity, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -2299,6 +2910,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $OrderItemsTable orderItems = $OrderItemsTable(this);
   late final $PaymentsTable payments = $PaymentsTable(this);
   late final $VoiceNotesTable voiceNotes = $VoiceNotesTable(this);
+  late final $StockAdjustmentsTable stockAdjustments = $StockAdjustmentsTable(
+    this,
+  );
+  late final $ItemSettingsTable itemSettings = $ItemSettingsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -2309,6 +2924,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     orderItems,
     payments,
     voiceNotes,
+    stockAdjustments,
+    itemSettings,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -4714,6 +5331,388 @@ typedef $$VoiceNotesTableProcessedTableManager =
       VoiceNote,
       PrefetchHooks Function({bool partyId, bool orderId})
     >;
+typedef $$StockAdjustmentsTableCreateCompanionBuilder =
+    StockAdjustmentsCompanion Function({
+      Value<int> id,
+      required String itemName,
+      required double quantity,
+      required DateTime date,
+      Value<String?> note,
+    });
+typedef $$StockAdjustmentsTableUpdateCompanionBuilder =
+    StockAdjustmentsCompanion Function({
+      Value<int> id,
+      Value<String> itemName,
+      Value<double> quantity,
+      Value<DateTime> date,
+      Value<String?> note,
+    });
+
+class $$StockAdjustmentsTableFilterComposer
+    extends Composer<_$AppDatabase, $StockAdjustmentsTable> {
+  $$StockAdjustmentsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get itemName => $composableBuilder(
+    column: $table.itemName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get quantity => $composableBuilder(
+    column: $table.quantity,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$StockAdjustmentsTableOrderingComposer
+    extends Composer<_$AppDatabase, $StockAdjustmentsTable> {
+  $$StockAdjustmentsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get itemName => $composableBuilder(
+    column: $table.itemName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get quantity => $composableBuilder(
+    column: $table.quantity,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$StockAdjustmentsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $StockAdjustmentsTable> {
+  $$StockAdjustmentsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get itemName =>
+      $composableBuilder(column: $table.itemName, builder: (column) => column);
+
+  GeneratedColumn<double> get quantity =>
+      $composableBuilder(column: $table.quantity, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get date =>
+      $composableBuilder(column: $table.date, builder: (column) => column);
+
+  GeneratedColumn<String> get note =>
+      $composableBuilder(column: $table.note, builder: (column) => column);
+}
+
+class $$StockAdjustmentsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $StockAdjustmentsTable,
+          StockAdjustment,
+          $$StockAdjustmentsTableFilterComposer,
+          $$StockAdjustmentsTableOrderingComposer,
+          $$StockAdjustmentsTableAnnotationComposer,
+          $$StockAdjustmentsTableCreateCompanionBuilder,
+          $$StockAdjustmentsTableUpdateCompanionBuilder,
+          (
+            StockAdjustment,
+            BaseReferences<
+              _$AppDatabase,
+              $StockAdjustmentsTable,
+              StockAdjustment
+            >,
+          ),
+          StockAdjustment,
+          PrefetchHooks Function()
+        > {
+  $$StockAdjustmentsTableTableManager(
+    _$AppDatabase db,
+    $StockAdjustmentsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$StockAdjustmentsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$StockAdjustmentsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$StockAdjustmentsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> itemName = const Value.absent(),
+                Value<double> quantity = const Value.absent(),
+                Value<DateTime> date = const Value.absent(),
+                Value<String?> note = const Value.absent(),
+              }) => StockAdjustmentsCompanion(
+                id: id,
+                itemName: itemName,
+                quantity: quantity,
+                date: date,
+                note: note,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String itemName,
+                required double quantity,
+                required DateTime date,
+                Value<String?> note = const Value.absent(),
+              }) => StockAdjustmentsCompanion.insert(
+                id: id,
+                itemName: itemName,
+                quantity: quantity,
+                date: date,
+                note: note,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$StockAdjustmentsTable, StockAdjustment>(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $StockAdjustmentsTable,
+                    StockAdjustment
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$StockAdjustmentsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $StockAdjustmentsTable,
+      StockAdjustment,
+      $$StockAdjustmentsTableFilterComposer,
+      $$StockAdjustmentsTableOrderingComposer,
+      $$StockAdjustmentsTableAnnotationComposer,
+      $$StockAdjustmentsTableCreateCompanionBuilder,
+      $$StockAdjustmentsTableUpdateCompanionBuilder,
+      (
+        StockAdjustment,
+        BaseReferences<_$AppDatabase, $StockAdjustmentsTable, StockAdjustment>,
+      ),
+      StockAdjustment,
+      PrefetchHooks Function()
+    >;
+typedef $$ItemSettingsTableCreateCompanionBuilder =
+    ItemSettingsCompanion Function({
+      required String itemName,
+      Value<String?> unit,
+      Value<double?> minQuantity,
+      Value<int> rowid,
+    });
+typedef $$ItemSettingsTableUpdateCompanionBuilder =
+    ItemSettingsCompanion Function({
+      Value<String> itemName,
+      Value<String?> unit,
+      Value<double?> minQuantity,
+      Value<int> rowid,
+    });
+
+class $$ItemSettingsTableFilterComposer
+    extends Composer<_$AppDatabase, $ItemSettingsTable> {
+  $$ItemSettingsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get itemName => $composableBuilder(
+    column: $table.itemName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get unit => $composableBuilder(
+    column: $table.unit,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get minQuantity => $composableBuilder(
+    column: $table.minQuantity,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ItemSettingsTableOrderingComposer
+    extends Composer<_$AppDatabase, $ItemSettingsTable> {
+  $$ItemSettingsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get itemName => $composableBuilder(
+    column: $table.itemName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get unit => $composableBuilder(
+    column: $table.unit,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get minQuantity => $composableBuilder(
+    column: $table.minQuantity,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ItemSettingsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ItemSettingsTable> {
+  $$ItemSettingsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get itemName =>
+      $composableBuilder(column: $table.itemName, builder: (column) => column);
+
+  GeneratedColumn<String> get unit =>
+      $composableBuilder(column: $table.unit, builder: (column) => column);
+
+  GeneratedColumn<double> get minQuantity => $composableBuilder(
+    column: $table.minQuantity,
+    builder: (column) => column,
+  );
+}
+
+class $$ItemSettingsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ItemSettingsTable,
+          ItemSetting,
+          $$ItemSettingsTableFilterComposer,
+          $$ItemSettingsTableOrderingComposer,
+          $$ItemSettingsTableAnnotationComposer,
+          $$ItemSettingsTableCreateCompanionBuilder,
+          $$ItemSettingsTableUpdateCompanionBuilder,
+          (
+            ItemSetting,
+            BaseReferences<_$AppDatabase, $ItemSettingsTable, ItemSetting>,
+          ),
+          ItemSetting,
+          PrefetchHooks Function()
+        > {
+  $$ItemSettingsTableTableManager(_$AppDatabase db, $ItemSettingsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ItemSettingsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ItemSettingsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ItemSettingsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> itemName = const Value.absent(),
+                Value<String?> unit = const Value.absent(),
+                Value<double?> minQuantity = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ItemSettingsCompanion(
+                itemName: itemName,
+                unit: unit,
+                minQuantity: minQuantity,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String itemName,
+                Value<String?> unit = const Value.absent(),
+                Value<double?> minQuantity = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ItemSettingsCompanion.insert(
+                itemName: itemName,
+                unit: unit,
+                minQuantity: minQuantity,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$ItemSettingsTable, ItemSetting>(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $ItemSettingsTable,
+                    ItemSetting
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ItemSettingsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ItemSettingsTable,
+      ItemSetting,
+      $$ItemSettingsTableFilterComposer,
+      $$ItemSettingsTableOrderingComposer,
+      $$ItemSettingsTableAnnotationComposer,
+      $$ItemSettingsTableCreateCompanionBuilder,
+      $$ItemSettingsTableUpdateCompanionBuilder,
+      (
+        ItemSetting,
+        BaseReferences<_$AppDatabase, $ItemSettingsTable, ItemSetting>,
+      ),
+      ItemSetting,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -4728,4 +5727,8 @@ class $AppDatabaseManager {
       $$PaymentsTableTableManager(_db, _db.payments);
   $$VoiceNotesTableTableManager get voiceNotes =>
       $$VoiceNotesTableTableManager(_db, _db.voiceNotes);
+  $$StockAdjustmentsTableTableManager get stockAdjustments =>
+      $$StockAdjustmentsTableTableManager(_db, _db.stockAdjustments);
+  $$ItemSettingsTableTableManager get itemSettings =>
+      $$ItemSettingsTableTableManager(_db, _db.itemSettings);
 }

@@ -40,7 +40,11 @@ final router = GoRouter(
       builder: (_, s) => StatementScreen(partyId: _id(s)),
     ),
     GoRoute(path: '/collections', builder: (_, _) => const CollectionsScreen()),
-    GoRoute(path: '/items', builder: (_, _) => const ItemsScreen()),
+    GoRoute(
+      path: '/items',
+      builder: (_, s) =>
+          ItemsScreen(lowOnly: s.uri.queryParameters['low'] == '1'),
+    ),
     GoRoute(path: '/parties/new', builder: (_, _) => const PartyFormScreen()),
     GoRoute(
       path: '/parties/:id',

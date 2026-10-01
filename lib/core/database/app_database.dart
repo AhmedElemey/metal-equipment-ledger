@@ -78,6 +78,29 @@ class Payments extends Table {
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 
+/// Manual stock corrections: an opening count or a physical count (جرد)
+/// that differs from what orders imply. Positive adds, negative removes.
+class StockAdjustments extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get itemName => text()();
+  RealColumn get quantity => real()();
+  DateTimeColumn get date => dateTime()();
+  TextColumn get note => text().nullable()();
+}
+
+/// Per-item settings. An item with a row here (or any adjustment) is
+/// "tracked": its stock is shown and its low-stock alert can fire.
+class ItemSettings extends Table {
+  TextColumn get itemName => text()();
+  TextColumn get unit => text().nullable()();
+
+  /// Alert when stock falls to or below this.
+  RealColumn get minQuantity => real().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {itemName};
+}
+
 class VoiceNotes extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get partyId =>
@@ -138,33 +161,38 @@ typedef DataCounts = ({int parties, int orders});
 /// The last price one party got for an item, in piasters.
 typedef PartyItemPrice = ({int price, DateTime at});
 
-/// An item name from past orders with its latest prices (in piasters).
-class ItemPrice {
-  const ItemPrice({
+/// An item with its latest prices (in piasters) and stock.
+class ItemSummary {
+  const ItemSummary({
     required this.name,
     required this.unit,
     required this.lastSale,
     required this.lastSaleAt,
     required this.lastPurchase,
     required this.lastPurchaseAt,
+    required this.stock,
+    required this.tracked,
+    required this.minQuantity,
   });
 
   final String name;
 
-  /// Unit used the last time this item appeared in any order.
+  /// The unit set for the item, else the one used in its latest order.
   final String unit;
   final int? lastSale;
   final DateTime? lastSaleAt;
   final int? lastPurchase;
   final DateTime? lastPurchaseAt;
 
-  DateTime get lastUsedAt {
-    final s = lastSaleAt;
-    final p = lastPurchaseAt;
-    if (s == null) return p!;
-    if (p == null) return s;
-    return s.isAfter(p) ? s : p;
-  }
+  /// Purchases − sales (real orders) + manual adjustments.
+  final double stock;
+
+  /// True once he has counted the item or set its settings; only tracked
+  /// items show stock and raise alerts, so old history doesn't nag.
+  final bool tracked;
+  final double? minQuantity;
+
+  bool get isLow => tracked && minQuantity != null && stock <= minQuantity!;
 }
 
 /// The file isn't a backup of this app (or is damaged).
@@ -260,14 +288,24 @@ const _partyBalanceSql =
     'THEN pay.amount_piasters ELSE -pay.amount_piasters END) '
     'FROM payments pay WHERE pay.party_id = p.id), 0))';
 
-@DriftDatabase(tables: [Parties, Orders, OrderItems, Payments, VoiceNotes])
+@DriftDatabase(
+  tables: [
+    Parties,
+    Orders,
+    OrderItems,
+    Payments,
+    VoiceNotes,
+    StockAdjustments,
+    ItemSettings,
+  ],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
 
   static const fileName = 'metal_ledger';
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -284,6 +322,10 @@ class AppDatabase extends _$AppDatabase {
           'paid_piasters, date, created_at FROM orders WHERE paid_piasters > 0',
         );
         await m.alterTable(TableMigration(orders)); // drops paid_piasters
+      }
+      if (from < 3) {
+        await m.createTable(stockAdjustments);
+        await m.createTable(itemSettings);
       }
     },
     beforeOpen: (details) async {
@@ -532,39 +574,81 @@ class AppDatabase extends _$AppDatabase {
   Future<void> deleteOrder(int id) =>
       (delete(orders)..where((o) => o.id.equals(id))).go();
 
-  /// Every item name from real orders with its last sale and purchase
-  /// price, most recently used first.
-  Stream<List<ItemPrice>> watchItemPrices() {
+  /// Every item (from real orders, stock counts or settings) with its last
+  /// sale and purchase price and current stock, most recently used first.
+  Stream<List<ItemSummary>> watchItems() {
     return customSelect(
-      'WITH ranked AS ('
-      'SELECT i.name, i.unit, i.unit_price_piasters AS price, o.kind, o.date, '
-      'ROW_NUMBER() OVER (PARTITION BY i.name, o.kind '
-      'ORDER BY o.date DESC, o.id DESC, i.id DESC) AS rn '
-      'FROM order_items i JOIN orders o ON o.id = i.order_id WHERE $_counts) '
-      'SELECT name, '
-      'MAX(CASE WHEN kind = $_sale THEN price END) AS last_sale, '
-      'MAX(CASE WHEN kind = $_sale THEN date END) AS last_sale_at, '
-      'MAX(CASE WHEN kind != $_sale THEN price END) AS last_purchase, '
-      'MAX(CASE WHEN kind != $_sale THEN date END) AS last_purchase_at, '
-      '(SELECT r.unit FROM ranked r WHERE r.name = ranked.name AND r.rn = 1 '
-      'ORDER BY r.date DESC LIMIT 1) AS unit, '
-      'MAX(date) AS last_used '
-      'FROM ranked WHERE rn = 1 GROUP BY name ORDER BY last_used DESC',
-      readsFrom: {orders, orderItems},
+      'WITH lines AS ('
+      'SELECT i.name, i.unit, i.quantity, i.unit_price_piasters AS price, '
+      'o.kind, o.date, o.id AS oid, i.id AS iid '
+      'FROM order_items i JOIN orders o ON o.id = i.order_id WHERE $_counts), '
+      'ranked AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY name, kind '
+      'ORDER BY date DESC, oid DESC, iid DESC) AS rn FROM lines), '
+      'names AS (SELECT name FROM lines '
+      'UNION SELECT item_name FROM stock_adjustments '
+      'UNION SELECT item_name FROM item_settings) '
+      'SELECT n.name, '
+      '(SELECT price FROM ranked WHERE name = n.name AND kind = $_sale AND rn = 1) AS last_sale, '
+      '(SELECT date FROM ranked WHERE name = n.name AND kind = $_sale AND rn = 1) AS last_sale_at, '
+      '(SELECT price FROM ranked WHERE name = n.name AND kind != $_sale AND rn = 1) AS last_purchase, '
+      '(SELECT date FROM ranked WHERE name = n.name AND kind != $_sale AND rn = 1) AS last_purchase_at, '
+      "COALESCE((SELECT unit FROM item_settings WHERE item_name = n.name), "
+      "(SELECT unit FROM ranked WHERE name = n.name AND rn = 1 ORDER BY date DESC LIMIT 1), 'قطعة') AS unit, "
+      'COALESCE((SELECT SUM(CASE WHEN kind = $_sale THEN -quantity ELSE quantity END) '
+      'FROM lines WHERE name = n.name), 0) + '
+      'COALESCE((SELECT SUM(quantity) FROM stock_adjustments WHERE item_name = n.name), 0) AS stock, '
+      '(EXISTS(SELECT 1 FROM stock_adjustments WHERE item_name = n.name) OR '
+      'EXISTS(SELECT 1 FROM item_settings WHERE item_name = n.name)) AS tracked, '
+      '(SELECT min_quantity FROM item_settings WHERE item_name = n.name) AS min_quantity, '
+      'MAX(COALESCE((SELECT MAX(date) FROM lines WHERE name = n.name), 0), '
+      'COALESCE((SELECT MAX(date) FROM stock_adjustments WHERE item_name = n.name), 0)) AS last_used '
+      'FROM names n ORDER BY last_used DESC, n.name',
+      readsFrom: {orders, orderItems, stockAdjustments, itemSettings},
     ).watch().map(
       (rows) => [
         for (final r in rows)
-          ItemPrice(
+          ItemSummary(
             name: r.read<String>('name'),
             unit: r.read<String>('unit'),
             lastSale: r.readNullable<int>('last_sale'),
             lastSaleAt: r.readNullable<DateTime>('last_sale_at'),
             lastPurchase: r.readNullable<int>('last_purchase'),
             lastPurchaseAt: r.readNullable<DateTime>('last_purchase_at'),
+            stock: r.read<double>('stock'),
+            tracked: r.read<bool>('tracked'),
+            minQuantity: r.readNullable<double>('min_quantity'),
           ),
       ],
     );
   }
+
+  /// Records a physical count: adds the difference to reach [actual].
+  Future<void> recordStockCount(
+    String itemName, {
+    required double current,
+    required double actual,
+    required DateTime date,
+    String? note,
+  }) => into(stockAdjustments).insert(
+    StockAdjustmentsCompanion.insert(
+      itemName: itemName,
+      quantity: actual - current,
+      date: date,
+      note: Value(note),
+    ),
+  );
+
+  Future<void> saveItemSettings(
+    String itemName, {
+    String? unit,
+    double? minQuantity,
+  }) => into(itemSettings).insertOnConflictUpdate(
+    ItemSettingsCompanion.insert(
+      itemName: itemName,
+      unit: Value(unit),
+      minQuantity: Value(minQuantity),
+    ),
+  );
 
   /// The last price [partyId] got for each item in real orders of [kind],
   /// keyed by item name. [excludeOrderId] leaves out the order being edited.
@@ -697,6 +781,8 @@ class AppDatabase extends _$AppDatabase {
       orderItems,
       payments,
       voiceNotes,
+      stockAdjustments,
+      itemSettings,
     ];
     await customStatement('ATTACH DATABASE ? AS backup', [backup.path]);
     try {

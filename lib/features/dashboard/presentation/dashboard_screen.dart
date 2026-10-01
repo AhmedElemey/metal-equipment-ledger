@@ -8,6 +8,7 @@ import '../../../core/formatters.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../items/data/items_providers.dart';
 import '../../orders/data/orders_providers.dart';
 import '../../orders/presentation/order_tile.dart';
 
@@ -21,6 +22,11 @@ class DashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final stats = ref.watch(dashboardProvider).value;
+    final lowStock = ref.watch(
+      itemsProvider.select(
+        (items) => items.value?.where((i) => i.isLow).length ?? 0,
+      ),
+    );
     final recent =
         ref
             .watch(
@@ -74,6 +80,21 @@ class DashboardScreen extends ConsumerWidget {
                   subtitle: const Text('اضغط لعرض القائمة وإرسال تذكير'),
                   trailing: const Icon(Icons.chevron_left),
                   onTap: () => context.push('/collections'),
+                ),
+              ),
+            ),
+          if (lowStock > 0)
+            SliverToBoxAdapter(
+              child: Card(
+                color: const Color(0xFFFFEBEE),
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.inventory_2_outlined,
+                    color: AppColors.danger,
+                  ),
+                  title: Text('المخزون: $lowStock صنف أوشك على النفاد'),
+                  trailing: const Icon(Icons.chevron_left),
+                  onTap: () => context.push('/items?low=1'),
                 ),
               ),
             ),

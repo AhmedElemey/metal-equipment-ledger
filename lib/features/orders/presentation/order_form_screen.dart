@@ -187,8 +187,7 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
                   .value ??
               const <String, PartyItemPrice>{};
     final itemsByName = {
-      for (final i
-          in ref.watch(itemPricesProvider).value ?? const <ItemPrice>[])
+      for (final i in ref.watch(itemsProvider).value ?? const <ItemSummary>[])
         i.name: i,
     };
     final total = _total;
@@ -358,14 +357,14 @@ class _ItemFields extends StatelessWidget {
   final OrderKind kind;
 
   /// Past items and their last prices, for suggestions and hints.
-  final Map<String, ItemPrice> itemsByName;
+  final Map<String, ItemSummary> itemsByName;
 
   /// The selected party's last price per item name (empty if none chosen).
   final Map<String, PartyItemPrice> partyPrices;
   final VoidCallback onChanged;
   final VoidCallback? onRemove;
 
-  void _fillFrom(ItemPrice item) {
+  void _fillFrom(ItemSummary item) {
     controllers.unit.text = item.unit;
     // This party's own last price first, then the general last price.
     final price =
@@ -452,6 +451,7 @@ class _ItemFields extends StatelessWidget {
             ListenableBuilder(
               listenable: Listenable.merge([
                 controllers.name,
+                controllers.quantity,
                 controllers.price,
               ]),
               builder: (_, _) {
@@ -469,6 +469,7 @@ class _ItemFields extends StatelessWidget {
                       enteredPrice: parseMoneyToPiasters(
                         controllers.price.text,
                       ),
+                      enteredQuantity: parseNumber(controllers.quantity.text),
                     ),
                   ),
                 );

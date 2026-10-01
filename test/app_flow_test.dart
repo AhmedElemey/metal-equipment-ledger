@@ -337,4 +337,60 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 1));
   });
+
+  testWidgets('add an item with opening stock, then oversell it', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final db = AppDatabase(NativeDatabase.memory());
+    router.go('/items');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db)],
+        child: const MetalLedgerApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('صنف جديد'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'اسم الصنف *'),
+      'ماسورة 3 بوصة',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'الكمية الموجودة الآن'),
+      '10',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'نبهني لما توصل الكمية إلى (اختياري)'),
+      '12',
+    );
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+    expect(find.text('⚠ 10 قطعة'), findsOneWidget); // below its alert level
+
+    router.go('/');
+    await tester.pumpAndSettle();
+    expect(find.text('المخزون: 1 صنف أوشك على النفاد'), findsOneWidget);
+
+    router.go('/orders/new');
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'اسم الصنف *'),
+      'ماسورة',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ماسورة 3 بوصة'));
+    await tester.pumpAndSettle();
+    expect(find.text('المتاح في المخزون: 10 قطعة'), findsOneWidget);
+    await tester.enterText(find.widgetWithText(TextFormField, 'الكمية'), '15');
+    await tester.pump();
+    expect(find.text('⚠ الكمية أكبر من المتاح في المخزون'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
 }
