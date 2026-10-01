@@ -11,8 +11,11 @@ Future<void> showItemStockSheet(BuildContext context, {ItemSummary? item}) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    builder: (_) => Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+    // The sheet's own context: it sees the keyboard as it opens.
+    builder: (sheetContext) => Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
+      ),
       child: _ItemStockSheet(item: item),
     ),
   );
