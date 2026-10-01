@@ -82,6 +82,18 @@ class $PartiesTable extends Parties with TableInfo<$PartiesTable, Party> {
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _lastRemindedAtMeta = const VerificationMeta(
+    'lastRemindedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastRemindedAt =
+      GeneratedColumn<DateTime>(
+        'last_reminded_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -91,6 +103,7 @@ class $PartiesTable extends Parties with TableInfo<$PartiesTable, Party> {
     kind,
     notes,
     createdAt,
+    lastRemindedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -139,6 +152,15 @@ class $PartiesTable extends Parties with TableInfo<$PartiesTable, Party> {
         createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
       );
     }
+    if (data.containsKey('last_reminded_at')) {
+      context.handle(
+        _lastRemindedAtMeta,
+        lastRemindedAt.isAcceptableOrUnknown(
+          data['last_reminded_at']!,
+          _lastRemindedAtMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -178,6 +200,10 @@ class $PartiesTable extends Parties with TableInfo<$PartiesTable, Party> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      lastRemindedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_reminded_at'],
+      ),
     );
   }
 
@@ -198,6 +224,9 @@ class Party extends DataClass implements Insertable<Party> {
   final PartyKind kind;
   final String? notes;
   final DateTime createdAt;
+
+  /// When a payment reminder was last sent, so he doesn't nag twice a day.
+  final DateTime? lastRemindedAt;
   const Party({
     required this.id,
     required this.name,
@@ -206,6 +235,7 @@ class Party extends DataClass implements Insertable<Party> {
     required this.kind,
     this.notes,
     required this.createdAt,
+    this.lastRemindedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -225,6 +255,9 @@ class Party extends DataClass implements Insertable<Party> {
       map['notes'] = Variable<String>(notes);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || lastRemindedAt != null) {
+      map['last_reminded_at'] = Variable<DateTime>(lastRemindedAt);
+    }
     return map;
   }
 
@@ -241,6 +274,9 @@ class Party extends DataClass implements Insertable<Party> {
           ? const Value.absent()
           : Value(notes),
       createdAt: Value(createdAt),
+      lastRemindedAt: lastRemindedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastRemindedAt),
     );
   }
 
@@ -259,6 +295,7 @@ class Party extends DataClass implements Insertable<Party> {
       ),
       notes: serializer.fromJson<String?>(json['notes']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      lastRemindedAt: serializer.fromJson<DateTime?>(json['lastRemindedAt']),
     );
   }
   @override
@@ -272,6 +309,7 @@ class Party extends DataClass implements Insertable<Party> {
       'kind': serializer.toJson<int>($PartiesTable.$converterkind.toJson(kind)),
       'notes': serializer.toJson<String?>(notes),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'lastRemindedAt': serializer.toJson<DateTime?>(lastRemindedAt),
     };
   }
 
@@ -283,6 +321,7 @@ class Party extends DataClass implements Insertable<Party> {
     PartyKind? kind,
     Value<String?> notes = const Value.absent(),
     DateTime? createdAt,
+    Value<DateTime?> lastRemindedAt = const Value.absent(),
   }) => Party(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -291,6 +330,9 @@ class Party extends DataClass implements Insertable<Party> {
     kind: kind ?? this.kind,
     notes: notes.present ? notes.value : this.notes,
     createdAt: createdAt ?? this.createdAt,
+    lastRemindedAt: lastRemindedAt.present
+        ? lastRemindedAt.value
+        : this.lastRemindedAt,
   );
   Party copyWithCompanion(PartiesCompanion data) {
     return Party(
@@ -301,6 +343,9 @@ class Party extends DataClass implements Insertable<Party> {
       kind: data.kind.present ? data.kind.value : this.kind,
       notes: data.notes.present ? data.notes.value : this.notes,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      lastRemindedAt: data.lastRemindedAt.present
+          ? data.lastRemindedAt.value
+          : this.lastRemindedAt,
     );
   }
 
@@ -313,14 +358,23 @@ class Party extends DataClass implements Insertable<Party> {
           ..write('city: $city, ')
           ..write('kind: $kind, ')
           ..write('notes: $notes, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('lastRemindedAt: $lastRemindedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, name, phone, city, kind, notes, createdAt);
+  int get hashCode => Object.hash(
+    id,
+    name,
+    phone,
+    city,
+    kind,
+    notes,
+    createdAt,
+    lastRemindedAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -331,7 +385,8 @@ class Party extends DataClass implements Insertable<Party> {
           other.city == this.city &&
           other.kind == this.kind &&
           other.notes == this.notes &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.lastRemindedAt == this.lastRemindedAt);
 }
 
 class PartiesCompanion extends UpdateCompanion<Party> {
@@ -342,6 +397,7 @@ class PartiesCompanion extends UpdateCompanion<Party> {
   final Value<PartyKind> kind;
   final Value<String?> notes;
   final Value<DateTime> createdAt;
+  final Value<DateTime?> lastRemindedAt;
   const PartiesCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -350,6 +406,7 @@ class PartiesCompanion extends UpdateCompanion<Party> {
     this.kind = const Value.absent(),
     this.notes = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.lastRemindedAt = const Value.absent(),
   });
   PartiesCompanion.insert({
     this.id = const Value.absent(),
@@ -359,6 +416,7 @@ class PartiesCompanion extends UpdateCompanion<Party> {
     required PartyKind kind,
     this.notes = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.lastRemindedAt = const Value.absent(),
   }) : name = Value(name),
        kind = Value(kind);
   static Insertable<Party> custom({
@@ -369,6 +427,7 @@ class PartiesCompanion extends UpdateCompanion<Party> {
     Expression<int>? kind,
     Expression<String>? notes,
     Expression<DateTime>? createdAt,
+    Expression<DateTime>? lastRemindedAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -378,6 +437,7 @@ class PartiesCompanion extends UpdateCompanion<Party> {
       if (kind != null) 'kind': kind,
       if (notes != null) 'notes': notes,
       if (createdAt != null) 'created_at': createdAt,
+      if (lastRemindedAt != null) 'last_reminded_at': lastRemindedAt,
     });
   }
 
@@ -389,6 +449,7 @@ class PartiesCompanion extends UpdateCompanion<Party> {
     Value<PartyKind>? kind,
     Value<String?>? notes,
     Value<DateTime>? createdAt,
+    Value<DateTime?>? lastRemindedAt,
   }) {
     return PartiesCompanion(
       id: id ?? this.id,
@@ -398,6 +459,7 @@ class PartiesCompanion extends UpdateCompanion<Party> {
       kind: kind ?? this.kind,
       notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,
+      lastRemindedAt: lastRemindedAt ?? this.lastRemindedAt,
     );
   }
 
@@ -427,6 +489,9 @@ class PartiesCompanion extends UpdateCompanion<Party> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (lastRemindedAt.present) {
+      map['last_reminded_at'] = Variable<DateTime>(lastRemindedAt.value);
+    }
     return map;
   }
 
@@ -439,7 +504,8 @@ class PartiesCompanion extends UpdateCompanion<Party> {
           ..write('city: $city, ')
           ..write('kind: $kind, ')
           ..write('notes: $notes, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('lastRemindedAt: $lastRemindedAt')
           ..write(')'))
         .toString();
   }
@@ -505,18 +571,6 @@ class $OrdersTable extends Orders with TableInfo<$OrdersTable, Order> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
-  static const VerificationMeta _paidPiastersMeta = const VerificationMeta(
-    'paidPiasters',
-  );
-  @override
-  late final GeneratedColumn<int> paidPiasters = GeneratedColumn<int>(
-    'paid_piasters',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    defaultValue: const Constant(0),
-  );
   static const VerificationMeta _notesMeta = const VerificationMeta('notes');
   @override
   late final GeneratedColumn<String> notes = GeneratedColumn<String>(
@@ -545,7 +599,6 @@ class $OrdersTable extends Orders with TableInfo<$OrdersTable, Order> {
     kind,
     status,
     date,
-    paidPiasters,
     notes,
     createdAt,
   ];
@@ -579,15 +632,6 @@ class $OrdersTable extends Orders with TableInfo<$OrdersTable, Order> {
       );
     } else if (isInserting) {
       context.missing(_dateMeta);
-    }
-    if (data.containsKey('paid_piasters')) {
-      context.handle(
-        _paidPiastersMeta,
-        paidPiasters.isAcceptableOrUnknown(
-          data['paid_piasters']!,
-          _paidPiastersMeta,
-        ),
-      );
     }
     if (data.containsKey('notes')) {
       context.handle(
@@ -634,10 +678,6 @@ class $OrdersTable extends Orders with TableInfo<$OrdersTable, Order> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}date'],
       )!,
-      paidPiasters: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}paid_piasters'],
-      )!,
       notes: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}notes'],
@@ -666,9 +706,6 @@ class Order extends DataClass implements Insertable<Order> {
   final OrderKind kind;
   final OrderStatus status;
   final DateTime date;
-
-  /// Money is stored in piasters (1 EGP = 100) to avoid floating-point drift.
-  final int paidPiasters;
   final String? notes;
   final DateTime createdAt;
   const Order({
@@ -677,7 +714,6 @@ class Order extends DataClass implements Insertable<Order> {
     required this.kind,
     required this.status,
     required this.date,
-    required this.paidPiasters,
     this.notes,
     required this.createdAt,
   });
@@ -695,7 +731,6 @@ class Order extends DataClass implements Insertable<Order> {
       );
     }
     map['date'] = Variable<DateTime>(date);
-    map['paid_piasters'] = Variable<int>(paidPiasters);
     if (!nullToAbsent || notes != null) {
       map['notes'] = Variable<String>(notes);
     }
@@ -710,7 +745,6 @@ class Order extends DataClass implements Insertable<Order> {
       kind: Value(kind),
       status: Value(status),
       date: Value(date),
-      paidPiasters: Value(paidPiasters),
       notes: notes == null && nullToAbsent
           ? const Value.absent()
           : Value(notes),
@@ -733,7 +767,6 @@ class Order extends DataClass implements Insertable<Order> {
         serializer.fromJson<int>(json['status']),
       ),
       date: serializer.fromJson<DateTime>(json['date']),
-      paidPiasters: serializer.fromJson<int>(json['paidPiasters']),
       notes: serializer.fromJson<String?>(json['notes']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
@@ -749,7 +782,6 @@ class Order extends DataClass implements Insertable<Order> {
         $OrdersTable.$converterstatus.toJson(status),
       ),
       'date': serializer.toJson<DateTime>(date),
-      'paidPiasters': serializer.toJson<int>(paidPiasters),
       'notes': serializer.toJson<String?>(notes),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
@@ -761,7 +793,6 @@ class Order extends DataClass implements Insertable<Order> {
     OrderKind? kind,
     OrderStatus? status,
     DateTime? date,
-    int? paidPiasters,
     Value<String?> notes = const Value.absent(),
     DateTime? createdAt,
   }) => Order(
@@ -770,7 +801,6 @@ class Order extends DataClass implements Insertable<Order> {
     kind: kind ?? this.kind,
     status: status ?? this.status,
     date: date ?? this.date,
-    paidPiasters: paidPiasters ?? this.paidPiasters,
     notes: notes.present ? notes.value : this.notes,
     createdAt: createdAt ?? this.createdAt,
   );
@@ -781,9 +811,6 @@ class Order extends DataClass implements Insertable<Order> {
       kind: data.kind.present ? data.kind.value : this.kind,
       status: data.status.present ? data.status.value : this.status,
       date: data.date.present ? data.date.value : this.date,
-      paidPiasters: data.paidPiasters.present
-          ? data.paidPiasters.value
-          : this.paidPiasters,
       notes: data.notes.present ? data.notes.value : this.notes,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
@@ -797,7 +824,6 @@ class Order extends DataClass implements Insertable<Order> {
           ..write('kind: $kind, ')
           ..write('status: $status, ')
           ..write('date: $date, ')
-          ..write('paidPiasters: $paidPiasters, ')
           ..write('notes: $notes, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
@@ -805,16 +831,8 @@ class Order extends DataClass implements Insertable<Order> {
   }
 
   @override
-  int get hashCode => Object.hash(
-    id,
-    partyId,
-    kind,
-    status,
-    date,
-    paidPiasters,
-    notes,
-    createdAt,
-  );
+  int get hashCode =>
+      Object.hash(id, partyId, kind, status, date, notes, createdAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -824,7 +842,6 @@ class Order extends DataClass implements Insertable<Order> {
           other.kind == this.kind &&
           other.status == this.status &&
           other.date == this.date &&
-          other.paidPiasters == this.paidPiasters &&
           other.notes == this.notes &&
           other.createdAt == this.createdAt);
 }
@@ -835,7 +852,6 @@ class OrdersCompanion extends UpdateCompanion<Order> {
   final Value<OrderKind> kind;
   final Value<OrderStatus> status;
   final Value<DateTime> date;
-  final Value<int> paidPiasters;
   final Value<String?> notes;
   final Value<DateTime> createdAt;
   const OrdersCompanion({
@@ -844,7 +860,6 @@ class OrdersCompanion extends UpdateCompanion<Order> {
     this.kind = const Value.absent(),
     this.status = const Value.absent(),
     this.date = const Value.absent(),
-    this.paidPiasters = const Value.absent(),
     this.notes = const Value.absent(),
     this.createdAt = const Value.absent(),
   });
@@ -854,7 +869,6 @@ class OrdersCompanion extends UpdateCompanion<Order> {
     required OrderKind kind,
     this.status = const Value.absent(),
     required DateTime date,
-    this.paidPiasters = const Value.absent(),
     this.notes = const Value.absent(),
     this.createdAt = const Value.absent(),
   }) : partyId = Value(partyId),
@@ -866,7 +880,6 @@ class OrdersCompanion extends UpdateCompanion<Order> {
     Expression<int>? kind,
     Expression<int>? status,
     Expression<DateTime>? date,
-    Expression<int>? paidPiasters,
     Expression<String>? notes,
     Expression<DateTime>? createdAt,
   }) {
@@ -876,7 +889,6 @@ class OrdersCompanion extends UpdateCompanion<Order> {
       if (kind != null) 'kind': kind,
       if (status != null) 'status': status,
       if (date != null) 'date': date,
-      if (paidPiasters != null) 'paid_piasters': paidPiasters,
       if (notes != null) 'notes': notes,
       if (createdAt != null) 'created_at': createdAt,
     });
@@ -888,7 +900,6 @@ class OrdersCompanion extends UpdateCompanion<Order> {
     Value<OrderKind>? kind,
     Value<OrderStatus>? status,
     Value<DateTime>? date,
-    Value<int>? paidPiasters,
     Value<String?>? notes,
     Value<DateTime>? createdAt,
   }) {
@@ -898,7 +909,6 @@ class OrdersCompanion extends UpdateCompanion<Order> {
       kind: kind ?? this.kind,
       status: status ?? this.status,
       date: date ?? this.date,
-      paidPiasters: paidPiasters ?? this.paidPiasters,
       notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,
     );
@@ -926,9 +936,6 @@ class OrdersCompanion extends UpdateCompanion<Order> {
     if (date.present) {
       map['date'] = Variable<DateTime>(date.value);
     }
-    if (paidPiasters.present) {
-      map['paid_piasters'] = Variable<int>(paidPiasters.value);
-    }
     if (notes.present) {
       map['notes'] = Variable<String>(notes.value);
     }
@@ -946,7 +953,6 @@ class OrdersCompanion extends UpdateCompanion<Order> {
           ..write('kind: $kind, ')
           ..write('status: $status, ')
           ..write('date: $date, ')
-          ..write('paidPiasters: $paidPiasters, ')
           ..write('notes: $notes, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
@@ -1145,6 +1151,8 @@ class OrderItem extends DataClass implements Insertable<OrderItem> {
   final String name;
   final double quantity;
   final String unit;
+
+  /// Money is stored in piasters (1 EGP = 100) to avoid floating-point drift.
   final int unitPricePiasters;
   const OrderItem({
     required this.id,
@@ -1355,6 +1363,520 @@ class OrderItemsCompanion extends UpdateCompanion<OrderItem> {
           ..write('quantity: $quantity, ')
           ..write('unit: $unit, ')
           ..write('unitPricePiasters: $unitPricePiasters')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $PaymentsTable extends Payments with TableInfo<$PaymentsTable, Payment> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PaymentsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _partyIdMeta = const VerificationMeta(
+    'partyId',
+  );
+  @override
+  late final GeneratedColumn<int> partyId = GeneratedColumn<int>(
+    'party_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES parties (id) ON DELETE RESTRICT',
+    ),
+  );
+  static const VerificationMeta _orderIdMeta = const VerificationMeta(
+    'orderId',
+  );
+  @override
+  late final GeneratedColumn<int> orderId = GeneratedColumn<int>(
+    'order_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES orders (id) ON DELETE SET NULL',
+    ),
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<PaymentDirection, int> direction =
+      GeneratedColumn<int>(
+        'direction',
+        aliasedName,
+        false,
+        type: DriftSqlType.int,
+        requiredDuringInsert: true,
+      ).withConverter<PaymentDirection>($PaymentsTable.$converterdirection);
+  static const VerificationMeta _amountPiastersMeta = const VerificationMeta(
+    'amountPiasters',
+  );
+  @override
+  late final GeneratedColumn<int> amountPiasters = GeneratedColumn<int>(
+    'amount_piasters',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _dateMeta = const VerificationMeta('date');
+  @override
+  late final GeneratedColumn<DateTime> date = GeneratedColumn<DateTime>(
+    'date',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _noteMeta = const VerificationMeta('note');
+  @override
+  late final GeneratedColumn<String> note = GeneratedColumn<String>(
+    'note',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    partyId,
+    orderId,
+    direction,
+    amountPiasters,
+    date,
+    note,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'payments';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<Payment> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('party_id')) {
+      context.handle(
+        _partyIdMeta,
+        partyId.isAcceptableOrUnknown(data['party_id']!, _partyIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_partyIdMeta);
+    }
+    if (data.containsKey('order_id')) {
+      context.handle(
+        _orderIdMeta,
+        orderId.isAcceptableOrUnknown(data['order_id']!, _orderIdMeta),
+      );
+    }
+    if (data.containsKey('amount_piasters')) {
+      context.handle(
+        _amountPiastersMeta,
+        amountPiasters.isAcceptableOrUnknown(
+          data['amount_piasters']!,
+          _amountPiastersMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_amountPiastersMeta);
+    }
+    if (data.containsKey('date')) {
+      context.handle(
+        _dateMeta,
+        date.isAcceptableOrUnknown(data['date']!, _dateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_dateMeta);
+    }
+    if (data.containsKey('note')) {
+      context.handle(
+        _noteMeta,
+        note.isAcceptableOrUnknown(data['note']!, _noteMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Payment map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Payment(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      partyId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}party_id'],
+      )!,
+      orderId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}order_id'],
+      ),
+      direction: $PaymentsTable.$converterdirection.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}direction'],
+        )!,
+      ),
+      amountPiasters: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}amount_piasters'],
+      )!,
+      date: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}date'],
+      )!,
+      note: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}note'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $PaymentsTable createAlias(String alias) {
+    return $PaymentsTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<PaymentDirection, int, int> $converterdirection =
+      const EnumIndexConverter<PaymentDirection>(PaymentDirection.values);
+}
+
+class Payment extends DataClass implements Insertable<Payment> {
+  final int id;
+  final int partyId;
+
+  /// Null for a payment "on account" not tied to one order. Deleting an
+  /// order keeps its payments on the party's account — the money was real.
+  final int? orderId;
+  final PaymentDirection direction;
+  final int amountPiasters;
+  final DateTime date;
+  final String? note;
+  final DateTime createdAt;
+  const Payment({
+    required this.id,
+    required this.partyId,
+    this.orderId,
+    required this.direction,
+    required this.amountPiasters,
+    required this.date,
+    this.note,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['party_id'] = Variable<int>(partyId);
+    if (!nullToAbsent || orderId != null) {
+      map['order_id'] = Variable<int>(orderId);
+    }
+    {
+      map['direction'] = Variable<int>(
+        $PaymentsTable.$converterdirection.toSql(direction),
+      );
+    }
+    map['amount_piasters'] = Variable<int>(amountPiasters);
+    map['date'] = Variable<DateTime>(date);
+    if (!nullToAbsent || note != null) {
+      map['note'] = Variable<String>(note);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  PaymentsCompanion toCompanion(bool nullToAbsent) {
+    return PaymentsCompanion(
+      id: Value(id),
+      partyId: Value(partyId),
+      orderId: orderId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(orderId),
+      direction: Value(direction),
+      amountPiasters: Value(amountPiasters),
+      date: Value(date),
+      note: note == null && nullToAbsent ? const Value.absent() : Value(note),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory Payment.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Payment(
+      id: serializer.fromJson<int>(json['id']),
+      partyId: serializer.fromJson<int>(json['partyId']),
+      orderId: serializer.fromJson<int?>(json['orderId']),
+      direction: $PaymentsTable.$converterdirection.fromJson(
+        serializer.fromJson<int>(json['direction']),
+      ),
+      amountPiasters: serializer.fromJson<int>(json['amountPiasters']),
+      date: serializer.fromJson<DateTime>(json['date']),
+      note: serializer.fromJson<String?>(json['note']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'partyId': serializer.toJson<int>(partyId),
+      'orderId': serializer.toJson<int?>(orderId),
+      'direction': serializer.toJson<int>(
+        $PaymentsTable.$converterdirection.toJson(direction),
+      ),
+      'amountPiasters': serializer.toJson<int>(amountPiasters),
+      'date': serializer.toJson<DateTime>(date),
+      'note': serializer.toJson<String?>(note),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  Payment copyWith({
+    int? id,
+    int? partyId,
+    Value<int?> orderId = const Value.absent(),
+    PaymentDirection? direction,
+    int? amountPiasters,
+    DateTime? date,
+    Value<String?> note = const Value.absent(),
+    DateTime? createdAt,
+  }) => Payment(
+    id: id ?? this.id,
+    partyId: partyId ?? this.partyId,
+    orderId: orderId.present ? orderId.value : this.orderId,
+    direction: direction ?? this.direction,
+    amountPiasters: amountPiasters ?? this.amountPiasters,
+    date: date ?? this.date,
+    note: note.present ? note.value : this.note,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  Payment copyWithCompanion(PaymentsCompanion data) {
+    return Payment(
+      id: data.id.present ? data.id.value : this.id,
+      partyId: data.partyId.present ? data.partyId.value : this.partyId,
+      orderId: data.orderId.present ? data.orderId.value : this.orderId,
+      direction: data.direction.present ? data.direction.value : this.direction,
+      amountPiasters: data.amountPiasters.present
+          ? data.amountPiasters.value
+          : this.amountPiasters,
+      date: data.date.present ? data.date.value : this.date,
+      note: data.note.present ? data.note.value : this.note,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Payment(')
+          ..write('id: $id, ')
+          ..write('partyId: $partyId, ')
+          ..write('orderId: $orderId, ')
+          ..write('direction: $direction, ')
+          ..write('amountPiasters: $amountPiasters, ')
+          ..write('date: $date, ')
+          ..write('note: $note, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    partyId,
+    orderId,
+    direction,
+    amountPiasters,
+    date,
+    note,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Payment &&
+          other.id == this.id &&
+          other.partyId == this.partyId &&
+          other.orderId == this.orderId &&
+          other.direction == this.direction &&
+          other.amountPiasters == this.amountPiasters &&
+          other.date == this.date &&
+          other.note == this.note &&
+          other.createdAt == this.createdAt);
+}
+
+class PaymentsCompanion extends UpdateCompanion<Payment> {
+  final Value<int> id;
+  final Value<int> partyId;
+  final Value<int?> orderId;
+  final Value<PaymentDirection> direction;
+  final Value<int> amountPiasters;
+  final Value<DateTime> date;
+  final Value<String?> note;
+  final Value<DateTime> createdAt;
+  const PaymentsCompanion({
+    this.id = const Value.absent(),
+    this.partyId = const Value.absent(),
+    this.orderId = const Value.absent(),
+    this.direction = const Value.absent(),
+    this.amountPiasters = const Value.absent(),
+    this.date = const Value.absent(),
+    this.note = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  PaymentsCompanion.insert({
+    this.id = const Value.absent(),
+    required int partyId,
+    this.orderId = const Value.absent(),
+    required PaymentDirection direction,
+    required int amountPiasters,
+    required DateTime date,
+    this.note = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  }) : partyId = Value(partyId),
+       direction = Value(direction),
+       amountPiasters = Value(amountPiasters),
+       date = Value(date);
+  static Insertable<Payment> custom({
+    Expression<int>? id,
+    Expression<int>? partyId,
+    Expression<int>? orderId,
+    Expression<int>? direction,
+    Expression<int>? amountPiasters,
+    Expression<DateTime>? date,
+    Expression<String>? note,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (partyId != null) 'party_id': partyId,
+      if (orderId != null) 'order_id': orderId,
+      if (direction != null) 'direction': direction,
+      if (amountPiasters != null) 'amount_piasters': amountPiasters,
+      if (date != null) 'date': date,
+      if (note != null) 'note': note,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  PaymentsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? partyId,
+    Value<int?>? orderId,
+    Value<PaymentDirection>? direction,
+    Value<int>? amountPiasters,
+    Value<DateTime>? date,
+    Value<String?>? note,
+    Value<DateTime>? createdAt,
+  }) {
+    return PaymentsCompanion(
+      id: id ?? this.id,
+      partyId: partyId ?? this.partyId,
+      orderId: orderId ?? this.orderId,
+      direction: direction ?? this.direction,
+      amountPiasters: amountPiasters ?? this.amountPiasters,
+      date: date ?? this.date,
+      note: note ?? this.note,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (partyId.present) {
+      map['party_id'] = Variable<int>(partyId.value);
+    }
+    if (orderId.present) {
+      map['order_id'] = Variable<int>(orderId.value);
+    }
+    if (direction.present) {
+      map['direction'] = Variable<int>(
+        $PaymentsTable.$converterdirection.toSql(direction.value),
+      );
+    }
+    if (amountPiasters.present) {
+      map['amount_piasters'] = Variable<int>(amountPiasters.value);
+    }
+    if (date.present) {
+      map['date'] = Variable<DateTime>(date.value);
+    }
+    if (note.present) {
+      map['note'] = Variable<String>(note.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PaymentsCompanion(')
+          ..write('id: $id, ')
+          ..write('partyId: $partyId, ')
+          ..write('orderId: $orderId, ')
+          ..write('direction: $direction, ')
+          ..write('amountPiasters: $amountPiasters, ')
+          ..write('date: $date, ')
+          ..write('note: $note, ')
+          ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
   }
@@ -1775,6 +2297,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PartiesTable parties = $PartiesTable(this);
   late final $OrdersTable orders = $OrdersTable(this);
   late final $OrderItemsTable orderItems = $OrderItemsTable(this);
+  late final $PaymentsTable payments = $PaymentsTable(this);
   late final $VoiceNotesTable voiceNotes = $VoiceNotesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -1784,6 +2307,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     parties,
     orders,
     orderItems,
+    payments,
     voiceNotes,
   ];
   @override
@@ -1794,6 +2318,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('order_items', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'orders',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('payments', kind: UpdateKind.update)],
     ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
@@ -1820,6 +2351,7 @@ typedef $$PartiesTableCreateCompanionBuilder = PartiesCompanion Function({
   required PartyKind kind,
   Value<String?> notes,
   Value<DateTime> createdAt,
+  Value<DateTime?> lastRemindedAt,
 });
 typedef $$PartiesTableUpdateCompanionBuilder = PartiesCompanion Function({
   Value<int> id,
@@ -1829,6 +2361,7 @@ typedef $$PartiesTableUpdateCompanionBuilder = PartiesCompanion Function({
   Value<PartyKind> kind,
   Value<String?> notes,
   Value<DateTime> createdAt,
+  Value<DateTime?> lastRemindedAt,
 });
 
 final class $$PartiesTableReferences
@@ -1849,6 +2382,25 @@ final class $$PartiesTableReferences
     ).filter((f) => f.partyId.id.sqlEquals($_itemColumn<int>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_ordersRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$PaymentsTable, List<Payment>> _paymentsRefsTable(
+    _$AppDatabase db,
+  ) => MultiTypedResultKey.fromTable(
+    db.payments,
+    aliasName: 'parties__id__payments__party_id',
+  );
+
+  $$PaymentsTableProcessedTableManager get paymentsRefs {
+    final manager = $$PaymentsTableTableManager(
+      $_db,
+      $_db.payments,
+    ).filter((f) => f.partyId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_paymentsRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -1918,6 +2470,11 @@ class $$PartiesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<DateTime> get lastRemindedAt => $composableBuilder(
+    column: $table.lastRemindedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
   Expression<bool> ordersRefs(
     Expression<bool> Function($$OrdersTableFilterComposer f) f,
   ) {
@@ -1934,6 +2491,31 @@ class $$PartiesTableFilterComposer
           }) => $$OrdersTableFilterComposer(
             $db: $db,
             $table: $db.orders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> paymentsRefs(
+    Expression<bool> Function($$PaymentsTableFilterComposer f) f,
+  ) {
+    final $$PaymentsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.payments,
+      getReferencedColumn: (t) => t.partyId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PaymentsTableFilterComposer(
+            $db: $db,
+            $table: $db.payments,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -2012,6 +2594,11 @@ class $$PartiesTableOrderingComposer
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get lastRemindedAt => $composableBuilder(
+    column: $table.lastRemindedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$PartiesTableAnnotationComposer
@@ -2044,6 +2631,11 @@ class $$PartiesTableAnnotationComposer
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
+  GeneratedColumn<DateTime> get lastRemindedAt => $composableBuilder(
+    column: $table.lastRemindedAt,
+    builder: (column) => column,
+  );
+
   Expression<T> ordersRefs<T extends Object>(
     Expression<T> Function($$OrdersTableAnnotationComposer a) f,
   ) {
@@ -2060,6 +2652,31 @@ class $$PartiesTableAnnotationComposer
           }) => $$OrdersTableAnnotationComposer(
             $db: $db,
             $table: $db.orders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<T> paymentsRefs<T extends Object>(
+    Expression<T> Function($$PaymentsTableAnnotationComposer a) f,
+  ) {
+    final $$PaymentsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.payments,
+      getReferencedColumn: (t) => t.partyId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PaymentsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.payments,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -2108,7 +2725,11 @@ class $$PartiesTableTableManager
           $$PartiesTableUpdateCompanionBuilder,
           (Party, $$PartiesTableReferences),
           Party,
-          PrefetchHooks Function({bool ordersRefs, bool voiceNotesRefs})
+          PrefetchHooks Function({
+            bool ordersRefs,
+            bool paymentsRefs,
+            bool voiceNotesRefs,
+          })
         > {
   $$PartiesTableTableManager(_$AppDatabase db, $PartiesTable table)
     : super(
@@ -2130,6 +2751,7 @@ class $$PartiesTableTableManager
                 Value<PartyKind> kind = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime?> lastRemindedAt = const Value.absent(),
               }) => PartiesCompanion(
                 id: id,
                 name: name,
@@ -2138,6 +2760,7 @@ class $$PartiesTableTableManager
                 kind: kind,
                 notes: notes,
                 createdAt: createdAt,
+                lastRemindedAt: lastRemindedAt,
               ),
           createCompanionCallback:
               ({
@@ -2148,6 +2771,7 @@ class $$PartiesTableTableManager
                 required PartyKind kind,
                 Value<String?> notes = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime?> lastRemindedAt = const Value.absent(),
               }) => PartiesCompanion.insert(
                 id: id,
                 name: name,
@@ -2156,6 +2780,7 @@ class $$PartiesTableTableManager
                 kind: kind,
                 notes: notes,
                 createdAt: createdAt,
+                lastRemindedAt: lastRemindedAt,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -2166,11 +2791,16 @@ class $$PartiesTableTableManager
               )
               .toList(),
           prefetchHooksCallback:
-              ({ordersRefs = false, voiceNotesRefs = false}) {
+              ({
+                ordersRefs = false,
+                paymentsRefs = false,
+                voiceNotesRefs = false,
+              }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
                     if (ordersRefs) db.orders,
+                    if (paymentsRefs) db.payments,
                     if (voiceNotesRefs) db.voiceNotes,
                   ],
                   addJoins: null,
@@ -2187,6 +2817,27 @@ class $$PartiesTableTableManager
                                 table,
                                 p0,
                               ).ordersRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.partyId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (paymentsRefs)
+                        await $_getPrefetchedData<
+                          Party,
+                          $PartiesTable,
+                          Payment
+                        >(
+                          currentTable: table,
+                          referencedTable: $$PartiesTableReferences
+                              ._paymentsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$PartiesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).paymentsRefs,
                           referencedItemsForCurrentItem:
                               (item, referencedItems) => referencedItems.where(
                                 (e) => e.partyId == item.id,
@@ -2234,7 +2885,11 @@ typedef $$PartiesTableProcessedTableManager =
       $$PartiesTableUpdateCompanionBuilder,
       (Party, $$PartiesTableReferences),
       Party,
-      PrefetchHooks Function({bool ordersRefs, bool voiceNotesRefs})
+      PrefetchHooks Function({
+        bool ordersRefs,
+        bool paymentsRefs,
+        bool voiceNotesRefs,
+      })
     >;
 typedef $$OrdersTableCreateCompanionBuilder = OrdersCompanion Function({
   Value<int> id,
@@ -2242,7 +2897,6 @@ typedef $$OrdersTableCreateCompanionBuilder = OrdersCompanion Function({
   required OrderKind kind,
   Value<OrderStatus> status,
   required DateTime date,
-  Value<int> paidPiasters,
   Value<String?> notes,
   Value<DateTime> createdAt,
 });
@@ -2252,7 +2906,6 @@ typedef $$OrdersTableUpdateCompanionBuilder = OrdersCompanion Function({
   Value<OrderKind> kind,
   Value<OrderStatus> status,
   Value<DateTime> date,
-  Value<int> paidPiasters,
   Value<String?> notes,
   Value<DateTime> createdAt,
 });
@@ -2291,6 +2944,25 @@ final class $$OrdersTableReferences
     ).filter((f) => f.orderId.id.sqlEquals($_itemColumn<int>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_orderItemsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$PaymentsTable, List<Payment>> _paymentsRefsTable(
+    _$AppDatabase db,
+  ) => MultiTypedResultKey.fromTable(
+    db.payments,
+    aliasName: 'orders__id__payments__order_id',
+  );
+
+  $$PaymentsTableProcessedTableManager get paymentsRefs {
+    final manager = $$PaymentsTableTableManager(
+      $_db,
+      $_db.payments,
+    ).filter((f) => f.orderId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_paymentsRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -2346,11 +3018,6 @@ class $$OrdersTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<int> get paidPiasters => $composableBuilder(
-    column: $table.paidPiasters,
-    builder: (column) => ColumnFilters(column),
-  );
-
   ColumnFilters<String> get notes => $composableBuilder(
     column: $table.notes,
     builder: (column) => ColumnFilters(column),
@@ -2400,6 +3067,31 @@ class $$OrdersTableFilterComposer
           }) => $$OrderItemsTableFilterComposer(
             $db: $db,
             $table: $db.orderItems,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> paymentsRefs(
+    Expression<bool> Function($$PaymentsTableFilterComposer f) f,
+  ) {
+    final $$PaymentsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.payments,
+      getReferencedColumn: (t) => t.orderId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PaymentsTableFilterComposer(
+            $db: $db,
+            $table: $db.payments,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -2464,11 +3156,6 @@ class $$OrdersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<int> get paidPiasters => $composableBuilder(
-    column: $table.paidPiasters,
-    builder: (column) => ColumnOrderings(column),
-  );
-
   ColumnOrderings<String> get notes => $composableBuilder(
     column: $table.notes,
     builder: (column) => ColumnOrderings(column),
@@ -2524,11 +3211,6 @@ class $$OrdersTableAnnotationComposer
   GeneratedColumn<DateTime> get date =>
       $composableBuilder(column: $table.date, builder: (column) => column);
 
-  GeneratedColumn<int> get paidPiasters => $composableBuilder(
-    column: $table.paidPiasters,
-    builder: (column) => column,
-  );
-
   GeneratedColumn<String> get notes =>
       $composableBuilder(column: $table.notes, builder: (column) => column);
 
@@ -2583,6 +3265,31 @@ class $$OrdersTableAnnotationComposer
     return f(composer);
   }
 
+  Expression<T> paymentsRefs<T extends Object>(
+    Expression<T> Function($$PaymentsTableAnnotationComposer a) f,
+  ) {
+    final $$PaymentsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.payments,
+      getReferencedColumn: (t) => t.orderId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PaymentsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.payments,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
   Expression<T> voiceNotesRefs<T extends Object>(
     Expression<T> Function($$VoiceNotesTableAnnotationComposer a) f,
   ) {
@@ -2625,6 +3332,7 @@ class $$OrdersTableTableManager
           PrefetchHooks Function({
             bool partyId,
             bool orderItemsRefs,
+            bool paymentsRefs,
             bool voiceNotesRefs,
           })
         > {
@@ -2646,7 +3354,6 @@ class $$OrdersTableTableManager
                 Value<OrderKind> kind = const Value.absent(),
                 Value<OrderStatus> status = const Value.absent(),
                 Value<DateTime> date = const Value.absent(),
-                Value<int> paidPiasters = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => OrdersCompanion(
@@ -2655,7 +3362,6 @@ class $$OrdersTableTableManager
                 kind: kind,
                 status: status,
                 date: date,
-                paidPiasters: paidPiasters,
                 notes: notes,
                 createdAt: createdAt,
               ),
@@ -2666,7 +3372,6 @@ class $$OrdersTableTableManager
                 required OrderKind kind,
                 Value<OrderStatus> status = const Value.absent(),
                 required DateTime date,
-                Value<int> paidPiasters = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => OrdersCompanion.insert(
@@ -2675,7 +3380,6 @@ class $$OrdersTableTableManager
                 kind: kind,
                 status: status,
                 date: date,
-                paidPiasters: paidPiasters,
                 notes: notes,
                 createdAt: createdAt,
               ),
@@ -2691,12 +3395,14 @@ class $$OrdersTableTableManager
               ({
                 partyId = false,
                 orderItemsRefs = false,
+                paymentsRefs = false,
                 voiceNotesRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
                     if (orderItemsRefs) db.orderItems,
+                    if (paymentsRefs) db.payments,
                     if (voiceNotesRefs) db.voiceNotes,
                   ],
                   addJoins:
@@ -2752,6 +3458,23 @@ class $$OrdersTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (paymentsRefs)
+                        await $_getPrefetchedData<Order, $OrdersTable, Payment>(
+                          currentTable: table,
+                          referencedTable: $$OrdersTableReferences
+                              ._paymentsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$OrdersTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).paymentsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.orderId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                       if (voiceNotesRefs)
                         await $_getPrefetchedData<
                           Order,
@@ -2796,6 +3519,7 @@ typedef $$OrdersTableProcessedTableManager =
       PrefetchHooks Function({
         bool partyId,
         bool orderItemsRefs,
+        bool paymentsRefs,
         bool voiceNotesRefs,
       })
     >;
@@ -3126,6 +3850,457 @@ typedef $$OrderItemsTableProcessedTableManager =
       (OrderItem, $$OrderItemsTableReferences),
       OrderItem,
       PrefetchHooks Function({bool orderId})
+    >;
+typedef $$PaymentsTableCreateCompanionBuilder = PaymentsCompanion Function({
+  Value<int> id,
+  required int partyId,
+  Value<int?> orderId,
+  required PaymentDirection direction,
+  required int amountPiasters,
+  required DateTime date,
+  Value<String?> note,
+  Value<DateTime> createdAt,
+});
+typedef $$PaymentsTableUpdateCompanionBuilder = PaymentsCompanion Function({
+  Value<int> id,
+  Value<int> partyId,
+  Value<int?> orderId,
+  Value<PaymentDirection> direction,
+  Value<int> amountPiasters,
+  Value<DateTime> date,
+  Value<String?> note,
+  Value<DateTime> createdAt,
+});
+
+final class $$PaymentsTableReferences
+    extends BaseReferences<_$AppDatabase, $PaymentsTable, Payment> {
+  $$PaymentsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $PartiesTable _partyIdTable(_$AppDatabase db) =>
+      db.parties.createAlias('payments__party_id__parties__id');
+
+  $$PartiesTableProcessedTableManager get partyId {
+    final $_column = $_itemColumn<int>('party_id')!;
+
+    final manager = $$PartiesTableTableManager(
+      $_db,
+      $_db.parties,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_partyIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $OrdersTable _orderIdTable(_$AppDatabase db) =>
+      db.orders.createAlias('payments__order_id__orders__id');
+
+  $$OrdersTableProcessedTableManager? get orderId {
+    final $_column = $_itemColumn<int>('order_id');
+    if ($_column == null) return null;
+    final manager = $$OrdersTableTableManager(
+      $_db,
+      $_db.orders,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_orderIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$PaymentsTableFilterComposer
+    extends Composer<_$AppDatabase, $PaymentsTable> {
+  $$PaymentsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<PaymentDirection, PaymentDirection, int>
+  get direction => $composableBuilder(
+    column: $table.direction,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<int> get amountPiasters => $composableBuilder(
+    column: $table.amountPiasters,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$PartiesTableFilterComposer get partyId {
+    final $$PartiesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.partyId,
+      referencedTable: $db.parties,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PartiesTableFilterComposer(
+            $db: $db,
+            $table: $db.parties,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$OrdersTableFilterComposer get orderId {
+    final $$OrdersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.orderId,
+      referencedTable: $db.orders,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$OrdersTableFilterComposer(
+            $db: $db,
+            $table: $db.orders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PaymentsTableOrderingComposer
+    extends Composer<_$AppDatabase, $PaymentsTable> {
+  $$PaymentsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get direction => $composableBuilder(
+    column: $table.direction,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get amountPiasters => $composableBuilder(
+    column: $table.amountPiasters,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$PartiesTableOrderingComposer get partyId {
+    final $$PartiesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.partyId,
+      referencedTable: $db.parties,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PartiesTableOrderingComposer(
+            $db: $db,
+            $table: $db.parties,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$OrdersTableOrderingComposer get orderId {
+    final $$OrdersTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.orderId,
+      referencedTable: $db.orders,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$OrdersTableOrderingComposer(
+            $db: $db,
+            $table: $db.orders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PaymentsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PaymentsTable> {
+  $$PaymentsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<PaymentDirection, int> get direction =>
+      $composableBuilder(column: $table.direction, builder: (column) => column);
+
+  GeneratedColumn<int> get amountPiasters => $composableBuilder(
+    column: $table.amountPiasters,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get date =>
+      $composableBuilder(column: $table.date, builder: (column) => column);
+
+  GeneratedColumn<String> get note =>
+      $composableBuilder(column: $table.note, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  $$PartiesTableAnnotationComposer get partyId {
+    final $$PartiesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.partyId,
+      referencedTable: $db.parties,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PartiesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.parties,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$OrdersTableAnnotationComposer get orderId {
+    final $$OrdersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.orderId,
+      referencedTable: $db.orders,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$OrdersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.orders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PaymentsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PaymentsTable,
+          Payment,
+          $$PaymentsTableFilterComposer,
+          $$PaymentsTableOrderingComposer,
+          $$PaymentsTableAnnotationComposer,
+          $$PaymentsTableCreateCompanionBuilder,
+          $$PaymentsTableUpdateCompanionBuilder,
+          (Payment, $$PaymentsTableReferences),
+          Payment,
+          PrefetchHooks Function({bool partyId, bool orderId})
+        > {
+  $$PaymentsTableTableManager(_$AppDatabase db, $PaymentsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PaymentsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PaymentsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PaymentsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> partyId = const Value.absent(),
+                Value<int?> orderId = const Value.absent(),
+                Value<PaymentDirection> direction = const Value.absent(),
+                Value<int> amountPiasters = const Value.absent(),
+                Value<DateTime> date = const Value.absent(),
+                Value<String?> note = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => PaymentsCompanion(
+                id: id,
+                partyId: partyId,
+                orderId: orderId,
+                direction: direction,
+                amountPiasters: amountPiasters,
+                date: date,
+                note: note,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int partyId,
+                Value<int?> orderId = const Value.absent(),
+                required PaymentDirection direction,
+                required int amountPiasters,
+                required DateTime date,
+                Value<String?> note = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => PaymentsCompanion.insert(
+                id: id,
+                partyId: partyId,
+                orderId: orderId,
+                direction: direction,
+                amountPiasters: amountPiasters,
+                date: date,
+                note: note,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$PaymentsTable, Payment>(table),
+                  $$PaymentsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({partyId = false, orderId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (partyId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.partyId,
+                        referencedTable: $$PaymentsTableReferences
+                            ._partyIdTable(db),
+                        referencedColumn: $$PaymentsTableReferences
+                            ._partyIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+                    if (orderId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.orderId,
+                        referencedTable: $$PaymentsTableReferences
+                            ._orderIdTable(db),
+                        referencedColumn: $$PaymentsTableReferences
+                            ._orderIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$PaymentsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PaymentsTable,
+      Payment,
+      $$PaymentsTableFilterComposer,
+      $$PaymentsTableOrderingComposer,
+      $$PaymentsTableAnnotationComposer,
+      $$PaymentsTableCreateCompanionBuilder,
+      $$PaymentsTableUpdateCompanionBuilder,
+      (Payment, $$PaymentsTableReferences),
+      Payment,
+      PrefetchHooks Function({bool partyId, bool orderId})
     >;
 typedef $$VoiceNotesTableCreateCompanionBuilder = VoiceNotesCompanion Function({
   Value<int> id,
@@ -3549,6 +4724,8 @@ class $AppDatabaseManager {
       $$OrdersTableTableManager(_db, _db.orders);
   $$OrderItemsTableTableManager get orderItems =>
       $$OrderItemsTableTableManager(_db, _db.orderItems);
+  $$PaymentsTableTableManager get payments =>
+      $$PaymentsTableTableManager(_db, _db.payments);
   $$VoiceNotesTableTableManager get voiceNotes =>
       $$VoiceNotesTableTableManager(_db, _db.voiceNotes);
 }

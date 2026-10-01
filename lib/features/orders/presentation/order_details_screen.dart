@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,6 +12,8 @@ import '../../../core/theme.dart';
 import '../../../core/widgets/async_value_view.dart';
 import '../../../core/widgets/section_header.dart';
 import '../../../core/widgets/total_row.dart';
+import '../../accounts/data/accounts_providers.dart';
+import '../../accounts/presentation/record_payment_dialog.dart';
 import '../../parties/presentation/contact_launcher.dart';
 import '../../voice_notes/presentation/voice_notes_section.dart';
 import '../data/orders_providers.dart';
@@ -81,6 +84,8 @@ class _OrderBody extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final order = summary.order;
     final items = ref.watch(orderItemsProvider(order.id)).value ?? const [];
+    final payments =
+        ref.watch(orderPaymentsProvider(order.id)).value ?? const <Payment>[];
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
@@ -148,7 +153,7 @@ class _OrderBody extends ConsumerWidget {
                     formatMoney(summary.totalPiasters),
                     bold: true,
                   ),
-                  TotalRow('المدفوع', formatMoney(order.paidPiasters)),
+                  TotalRow('المدفوع', formatMoney(summary.paidPiasters)),
                   TotalRow(
                     'المتبقي',
                     formatMoney(summary.remainingPiasters),
@@ -182,6 +187,22 @@ class _OrderBody extends ConsumerWidget {
             ),
           ),
         ),
+        if (payments.isNotEmpty) ...[
+          const SliverToBoxAdapter(child: SectionHeader(title: 'الدفعات')),
+          SliverList.builder(
+            itemCount: payments.length,
+            itemBuilder: (_, i) {
+              final p = payments[i];
+              return Card(
+                child: ListTile(
+                  leading: const Icon(Icons.payments_outlined),
+                  title: Text(formatMoney(p.amountPiasters)),
+                  subtitle: Text([formatDate(p.date), ?p.note].join(' • ')),
+                ),
+              );
+            },
+          ),
+        ],
         VoiceNotesSliver(partyId: order.partyId, orderId: order.id),
         const SliverToBoxAdapter(child: SizedBox(height: 32)),
       ],
@@ -190,12 +211,25 @@ class _OrderBody extends ConsumerWidget {
 
   Future<void> _addPayment(BuildContext context, WidgetRef ref) async {
     final db = ref.read(databaseProvider);
-    final amount = await showDialog<int>(
-      context: context,
-      builder: (_) => _PaymentDialog(remaining: summary.remainingPiasters),
+    final order = summary.order;
+    final input = await showRecordPaymentDialog(
+      context,
+      direction: order.kind == OrderKind.sale
+          ? PaymentDirection.received
+          : PaymentDirection.paid,
+      suggestedAmount: summary.remainingPiasters,
     );
-    if (amount == null || amount == 0) return;
-    await db.updatePaid(summary.order.id, summary.order.paidPiasters + amount);
+    if (input == null) return;
+    await db.addPayment(
+      PaymentsCompanion.insert(
+        partyId: order.partyId,
+        orderId: Value(order.id),
+        direction: input.direction,
+        amountPiasters: input.amount,
+        date: input.date,
+        note: Value(input.note),
+      ),
+    );
   }
 
   Future<void> _shareOnWhatsApp(WidgetRef ref, List<OrderItem> items) async {
@@ -211,7 +245,7 @@ class _OrderBody extends ConsumerWidget {
             '${formatMoney(i.unitPricePiasters)}',
       '',
       'الإجمالي: ${formatMoney(summary.totalPiasters)}',
-      'المدفوع: ${formatMoney(order.paidPiasters)}',
+      'المدفوع: ${formatMoney(summary.paidPiasters)}',
       'المتبقي: ${formatMoney(summary.remainingPiasters)}',
     ];
     final phone = party.phone;
@@ -245,54 +279,6 @@ class _StatusMenu extends ConsumerWidget {
         deleteIcon: const Icon(Icons.arrow_drop_down),
         onDeleted: null,
       ),
-    );
-  }
-}
-
-class _PaymentDialog extends StatefulWidget {
-  const _PaymentDialog({required this.remaining});
-
-  final int remaining;
-
-  @override
-  State<_PaymentDialog> createState() => _PaymentDialogState();
-}
-
-class _PaymentDialogState extends State<_PaymentDialog> {
-  late final _amount = TextEditingController(
-    text: widget.remaining > 0 ? piastersToInput(widget.remaining) : '',
-  );
-
-  @override
-  void dispose() {
-    _amount.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('تسجيل دفعة'),
-      content: TextField(
-        controller: _amount,
-        autofocus: true,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(
-          labelText: 'المبلغ',
-          suffixText: 'ج.م',
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('إلغاء'),
-        ),
-        FilledButton(
-          onPressed: () =>
-              Navigator.pop(context, parseMoneyToPiasters(_amount.text)),
-          child: const Text('تسجيل'),
-        ),
-      ],
     );
   }
 }

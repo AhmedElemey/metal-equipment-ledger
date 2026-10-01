@@ -14,6 +14,22 @@ String formatDate(DateTime d) => _date.format(d);
 
 String formatDateTime(DateTime d) => _dateTime.format(d);
 
+/// Calendar days between [d] and [now] in natural Arabic.
+String daysAgo(DateTime d, DateTime now) {
+  final days = DateTime(
+    now.year,
+    now.month,
+    now.day,
+  ).difference(DateTime(d.year, d.month, d.day)).inDays;
+  return switch (days) {
+    <= 0 => 'اليوم',
+    1 => 'أمس',
+    2 => 'منذ يومين',
+    <= 10 => 'منذ $days أيام',
+    _ => 'منذ $days يوم',
+  };
+}
+
 String formatDuration(Duration d) {
   final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
   final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');

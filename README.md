@@ -10,7 +10,9 @@ Every evening the data is backed up to Google Drive.
 | Area | What it does |
 |---|---|
 | **الرئيسية** | Today's sales and purchases, what clients owe us, what we owe suppliers, open orders, latest orders |
-| **طلباتي** | Sale and purchase orders with line items (qty × unit × price), status (جديد / قيد التنفيذ / تم التسليم / ملغي), paid and remaining amounts, "تسجيل دفعة", send the order to the client on WhatsApp |
+| **طلباتي** | Sale and purchase orders with line items (qty × unit × price), status (جديد / قيد التنفيذ / تم التسليم / ملغي), optional down payment, dated payments per order, send the order to the client on WhatsApp |
+| **كشف حساب** | Per client/supplier: every order and payment with a running balance (عليه / له), record payments on account, send the statement on WhatsApp |
+| **التحصيل** | Everyone who owes us, biggest first, with the time since they last paid, a "متأخر" (overdue) flag after 30 days without payment, a one-tap polite WhatsApp reminder, and when they were last reminded |
 | **العملاء** | Clients and suppliers (or both), search by name or phone, one-tap call or WhatsApp, balance, full order history |
 | **ملاحظات صوتية** | Record or play voice notes on a client/supplier, optionally linked to a specific order |
 | **نسخ احتياطي** | Every day after 21:00 the app updates an Excel file (`دفتر المعدات - البيانات.xlsx`) and a full database copy in a Drive folder. Drive keeps older versions of both files. |
@@ -30,6 +32,9 @@ lib/
     voice_notes/   recorder sheet, player, list
     backup/        Excel export, Drive upload, daily schedule, settings screen
 ```
+
+Each party has **one net balance**: sales and payments we make add to it, purchases and payments we receive subtract from it. Positive means they owe us.
+Payments are separate records (dated, optionally linked to an order), so the statement shows exactly when each payment was made.
 
 Money is stored as integer piasters, which avoids rounding errors. Totals and
 balances are computed in SQL, so they can never get out of sync with the line items.

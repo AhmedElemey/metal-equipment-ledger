@@ -60,11 +60,9 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
   late final _items = widget.existing == null
       ? [_ItemControllers()]
       : widget.existing!.items.map(_ItemControllers.new).toList();
-  late final _paid = TextEditingController(
-    text: widget.existing == null
-        ? ''
-        : piastersToInput(widget.existing!.order.paidPiasters),
-  );
+  // Down payment — new orders only; later payments go through
+  // "تسجيل دفعة" so each one keeps its own date.
+  final _paid = TextEditingController();
   late final _notes = TextEditingController(text: widget.existing?.order.notes);
   bool _saving = false;
 
@@ -117,7 +115,6 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
           kind: Value(_kind),
           status: Value(existing?.status ?? OrderStatus.pending),
           date: Value(_date),
-          paidPiasters: Value(parseMoneyToPiasters(_paid.text) ?? 0),
           notes: Value(_notes.text.trim().isEmpty ? null : _notes.text.trim()),
           createdAt: existing == null
               ? const Value.absent()
@@ -135,6 +132,9 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
               unitPricePiasters: parseMoneyToPiasters(i.price.text)!,
             ),
         ],
+        downPayment: existing == null
+            ? parseMoneyToPiasters(_paid.text) ?? 0
+            : 0,
       );
       if (!mounted) return;
       if (existing == null) {
@@ -154,7 +154,8 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
   Widget build(BuildContext context) {
     final parties = ref.watch(partiesProvider('')).value ?? const <Party>[];
     final total = _total;
-    final paid = parseMoneyToPiasters(_paid.text) ?? 0;
+    final isNew = widget.existing == null;
+    final paid = isNew ? parseMoneyToPiasters(_paid.text) ?? 0 : 0;
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.existing == null ? 'طلب جديد' : 'تعديل الطلب'),
@@ -175,7 +176,10 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
                   ),
               ],
               selected: {_kind},
-              onSelectionChanged: (s) => setState(() => _kind = s.first),
+              // Locked when editing: existing payments depend on the kind.
+              onSelectionChanged: widget.existing == null
+                  ? (s) => setState(() => _kind = s.first)
+                  : null,
             ),
             const SizedBox(height: 16),
             DropdownMenu<int>(
@@ -222,25 +226,26 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
               label: const Text('إضافة صنف'),
             ),
             const Divider(),
-            TextFormField(
-              controller: _paid,
-              decoration: InputDecoration(
-                labelText: _kind == OrderKind.sale
-                    ? 'المبلغ المدفوع من العميل'
-                    : 'المبلغ المدفوع للمورد',
-                suffixText: 'ج.م',
+            if (isNew)
+              TextFormField(
+                controller: _paid,
+                decoration: InputDecoration(
+                  labelText: _kind == OrderKind.sale
+                      ? 'دفعة مقدمة من العميل (اختياري)'
+                      : 'دفعة مقدمة للمورد (اختياري)',
+                  suffixText: 'ج.م',
+                ),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                onChanged: (_) => setState(() {}),
+                validator: (v) =>
+                    (v != null &&
+                        v.trim().isNotEmpty &&
+                        parseMoneyToPiasters(v) == null)
+                    ? 'رقم غير صحيح'
+                    : null,
               ),
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              onChanged: (_) => setState(() {}),
-              validator: (v) =>
-                  (v != null &&
-                      v.trim().isNotEmpty &&
-                      parseMoneyToPiasters(v) == null)
-                  ? 'رقم غير صحيح'
-                  : null,
-            ),
             const SizedBox(height: 12),
             TextFormField(
               controller: _notes,
@@ -255,8 +260,14 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
                 child: Column(
                   children: [
                     TotalRow('الإجمالي', formatMoney(total), bold: true),
-                    TotalRow('المدفوع', formatMoney(paid)),
-                    TotalRow('المتبقي', formatMoney(total - paid), bold: true),
+                    if (isNew) ...[
+                      TotalRow('المدفوع', formatMoney(paid)),
+                      TotalRow(
+                        'المتبقي',
+                        formatMoney(total - paid),
+                        bold: true,
+                      ),
+                    ],
                   ],
                 ),
               ),

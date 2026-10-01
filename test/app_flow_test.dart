@@ -6,6 +6,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:metal_ledger/app.dart';
 import 'package:metal_ledger/core/database/app_database.dart';
 import 'package:metal_ledger/core/database/database_provider.dart';
+import 'package:metal_ledger/core/router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
@@ -52,7 +53,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('الحاج محمود'));
     await tester.pumpAndSettle();
-    expect(find.text('مستحق لنا عنده'), findsOneWidget);
+    expect(find.text('كشف حساب'), findsOneWidget);
     await tester.tap(find.text('طلب جديد'));
     await tester.pumpAndSettle();
 
@@ -86,6 +87,29 @@ void main() {
     ))!;
     expect(summary.totalPiasters, 300000);
     expect(summary.partyName, 'الحاج محمود');
+
+    // The unpaid client shows up in collections from the dashboard.
+    router.go('/');
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('التحصيل: 1 عميل'));
+    await tester.pumpAndSettle();
+    expect(find.text('الحاج محمود'), findsOneWidget);
+    expect(find.text('لم يدفع بعد • أول فاتورة اليوم'), findsOneWidget);
+
+    // Record a payment from the statement; the balance updates.
+    await tester.tap(find.byTooltip('كشف الحساب'));
+    await tester.pumpAndSettle();
+    expect(find.text('فاتورة بيع رقم 1'), findsOneWidget);
+    await tester.tap(find.text('تسجيل دفعة'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'المبلغ'),
+      '1000',
+    );
+    await tester.tap(find.text('تسجيل'));
+    await tester.pumpAndSettle();
+    expect(find.text('دفعة مستلمة'), findsOneWidget);
+    expect(find.text('عليه 2,000 ج.م'), findsOneWidget);
 
     // Unmount so drift's stream-cleanup timers fire inside the test.
     await tester.pumpWidget(const SizedBox());

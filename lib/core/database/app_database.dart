@@ -13,6 +13,10 @@ enum OrderKind { sale, purchase }
 
 enum OrderStatus { pending, inProgress, delivered, cancelled }
 
+/// [received]: money from the party to us (settles sales).
+/// [paid]: money from us to the party (settles purchases).
+enum PaymentDirection { received, paid }
+
 class Parties extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text().withLength(min: 1, max: 120)();
@@ -21,6 +25,9 @@ class Parties extends Table {
   IntColumn get kind => intEnum<PartyKind>()();
   TextColumn get notes => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  /// When a payment reminder was last sent, so he doesn't nag twice a day.
+  DateTimeColumn get lastRemindedAt => dateTime().nullable()();
 }
 
 class Orders extends Table {
@@ -31,9 +38,6 @@ class Orders extends Table {
   IntColumn get status =>
       intEnum<OrderStatus>().withDefault(const Constant(0))();
   DateTimeColumn get date => dateTime()();
-
-  /// Money is stored in piasters (1 EGP = 100) to avoid floating-point drift.
-  IntColumn get paidPiasters => integer().withDefault(const Constant(0))();
   TextColumn get notes => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
@@ -45,7 +49,28 @@ class OrderItems extends Table {
   TextColumn get name => text().withLength(min: 1, max: 200)();
   RealColumn get quantity => real()();
   TextColumn get unit => text().withDefault(const Constant('قطعة'))();
+
+  /// Money is stored in piasters (1 EGP = 100) to avoid floating-point drift.
   IntColumn get unitPricePiasters => integer()();
+}
+
+class Payments extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get partyId =>
+      integer().references(Parties, #id, onDelete: KeyAction.restrict)();
+
+  /// Null for a payment "on account" not tied to one order. Deleting an
+  /// order keeps its payments on the party's account — the money was real.
+  IntColumn get orderId => integer().nullable().references(
+    Orders,
+    #id,
+    onDelete: KeyAction.setNull,
+  )();
+  IntColumn get direction => intEnum<PaymentDirection>()();
+  IntColumn get amountPiasters => integer()();
+  DateTimeColumn get date => dateTime()();
+  TextColumn get note => text().nullable()();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 
 class VoiceNotes extends Table {
@@ -70,21 +95,17 @@ class OrderSummary {
     required this.order,
     required this.partyName,
     required this.totalPiasters,
+    required this.paidPiasters,
   });
 
   final Order order;
   final String partyName;
   final int totalPiasters;
 
-  int get remainingPiasters => totalPiasters - order.paidPiasters;
-}
+  /// Sum of the payments linked to this order.
+  final int paidPiasters;
 
-/// What a party owes us (sales) and what we owe them (purchases).
-class PartyBalance {
-  const PartyBalance({required this.dueFromThem, required this.dueToThem});
-
-  final int dueFromThem;
-  final int dueToThem;
+  int get remainingPiasters => totalPiasters - paidPiasters;
 }
 
 class DashboardStats {
@@ -93,6 +114,7 @@ class DashboardStats {
     required this.todayPurchases,
     required this.receivables,
     required this.payables,
+    required this.debtors,
     required this.openOrders,
   });
 
@@ -100,24 +122,117 @@ class DashboardStats {
   final int todayPurchases;
   final int receivables;
   final int payables;
+
+  /// Number of parties that owe us money.
+  final int debtors;
   final int openOrders;
 }
+
+/// A party that owes us money, for the collections list.
+class Debtor {
+  const Debtor({
+    required this.party,
+    required this.balance,
+    required this.lastPaymentAt,
+    required this.firstSaleAt,
+  });
+
+  final Party party;
+  final int balance;
+  final DateTime? lastPaymentAt;
+  final DateTime? firstSaleAt;
+
+  /// Last time money came in from them — or, if never, when they first
+  /// bought. This is what "how long has this been open" is measured from.
+  DateTime? get lastActivityAt => lastPaymentAt ?? firstSaleAt;
+}
+
+/// One line of a statement of account (كشف حساب).
+class StatementEntry {
+  const StatementEntry({
+    required this.date,
+    required this.orderKind,
+    required this.paymentDirection,
+    required this.refId,
+    required this.orderId,
+    required this.amount,
+    required this.note,
+    required this.balance,
+  });
+
+  final DateTime date;
+
+  /// Exactly one of [orderKind] / [paymentDirection] is set.
+  final OrderKind? orderKind;
+  final PaymentDirection? paymentDirection;
+
+  /// The order id or the payment id.
+  final int refId;
+
+  /// For a payment: the order it settles, if any.
+  final int? orderId;
+  final int amount;
+  final String? note;
+
+  /// Running balance after this line; positive means they owe us.
+  final int balance;
+
+  bool get isPayment => paymentDirection != null;
+
+  /// True when this line increases what they owe us (عليه), false when it
+  /// decreases it (له).
+  bool get increasesBalance =>
+      orderKind == OrderKind.sale || paymentDirection == PaymentDirection.paid;
+}
+
+const _sale = 0; // OrderKind.sale.index
+const _received = 0; // PaymentDirection.received.index
+const _cancelled = 3; // OrderStatus.cancelled.index
 
 const _orderTotalSql =
     'COALESCE((SELECT SUM(CAST(ROUND(i.quantity * i.unit_price_piasters) AS INTEGER)) '
     'FROM order_items i WHERE i.order_id = o.id), 0)';
 
-@DriftDatabase(tables: [Parties, Orders, OrderItems, VoiceNotes])
+const _orderPaidSql =
+    'COALESCE((SELECT SUM(pay.amount_piasters) FROM payments pay '
+    'WHERE pay.order_id = o.id), 0)';
+
+/// Net balance of party `p` — positive means they owe us. Sales and money we
+/// paid them count for us; purchases and money they paid us count against.
+const _partyBalanceSql =
+    '(COALESCE((SELECT SUM(CASE WHEN o.kind = $_sale THEN $_orderTotalSql '
+    'ELSE -$_orderTotalSql END) FROM orders o '
+    'WHERE o.party_id = p.id AND o.status != $_cancelled), 0) '
+    '- COALESCE((SELECT SUM(CASE WHEN pay.direction = $_received '
+    'THEN pay.amount_piasters ELSE -pay.amount_piasters END) '
+    'FROM payments pay WHERE pay.party_id = p.id), 0))';
+
+@DriftDatabase(tables: [Parties, Orders, OrderItems, Payments, VoiceNotes])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
 
   static const fileName = 'metal_ledger';
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        // v2: order "paid" amounts become real payment records.
+        await m.createTable(payments);
+        await m.addColumn(parties, parties.lastRemindedAt);
+        await customStatement(
+          'INSERT INTO payments '
+          '(party_id, order_id, direction, amount_piasters, date, created_at) '
+          'SELECT party_id, id, '
+          'CASE kind WHEN $_sale THEN $_received ELSE 1 END, '
+          'paid_piasters, date, created_at FROM orders WHERE paid_piasters > 0',
+        );
+        await m.alterTable(TableMigration(orders)); // drops paid_piasters
+      }
+    },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
     },
@@ -149,25 +264,108 @@ class AppDatabase extends _$AppDatabase {
   Future<int> saveParty(PartiesCompanion entry) =>
       into(parties).insertOnConflictUpdate(entry);
 
-  /// Fails (foreign key) if the party still has orders — by design, history
-  /// must never disappear silently.
+  /// Fails (foreign key) if the party still has orders or payments — by
+  /// design, history must never disappear silently.
   Future<void> deleteParty(int id) =>
       (delete(parties)..where((p) => p.id.equals(id))).go();
 
-  Stream<PartyBalance> watchPartyBalance(int partyId) {
-    return customSelect(
-      'SELECT '
-      'COALESCE(SUM(CASE WHEN o.kind = ${OrderKind.sale.index} THEN $_orderTotalSql - o.paid_piasters END), 0) AS due_from, '
-      'COALESCE(SUM(CASE WHEN o.kind = ${OrderKind.purchase.index} THEN $_orderTotalSql - o.paid_piasters END), 0) AS due_to '
-      'FROM orders o WHERE o.party_id = ? AND o.status != ${OrderStatus.cancelled.index}',
+  /// True if the party has any order or payment, which blocks deletion.
+  Future<bool> hasHistory(int partyId) async {
+    final row = await customSelect(
+      'SELECT EXISTS(SELECT 1 FROM orders WHERE party_id = ?1) '
+      'OR EXISTS(SELECT 1 FROM payments WHERE party_id = ?1) AS has',
       variables: [Variable.withInt(partyId)],
-      readsFrom: {orders, orderItems},
-    ).watchSingle().map(
-      (row) => PartyBalance(
-        dueFromThem: row.read<int>('due_from'),
-        dueToThem: row.read<int>('due_to'),
-      ),
+    ).getSingle();
+    return row.read<bool>('has');
+  }
+
+  Future<void> markReminded(int partyId, DateTime at) =>
+      (update(parties)..where((p) => p.id.equals(partyId))).write(
+        PartiesCompanion(lastRemindedAt: Value(at)),
+      );
+
+  /// Net balance; positive means they owe us, negative means we owe them.
+  Stream<int> watchPartyBalance(int partyId) {
+    return customSelect(
+      'SELECT $_partyBalanceSql AS balance FROM parties p WHERE p.id = ?',
+      variables: [Variable.withInt(partyId)],
+      readsFrom: {parties, orders, orderItems, payments},
+    ).watchSingle().map((row) => row.read<int>('balance'));
+  }
+
+  /// Net balance of every party, by id.
+  Future<Map<int, int>> partyBalances() async {
+    final rows = await customSelect(
+      'SELECT p.id AS id, $_partyBalanceSql AS balance FROM parties p',
+    ).get();
+    return {for (final r in rows) r.read<int>('id'): r.read<int>('balance')};
+  }
+
+  /// Parties that owe us, largest balance first.
+  Stream<List<Debtor>> watchDebtors() {
+    return customSelect(
+      'SELECT * FROM (SELECT p.*, $_partyBalanceSql AS balance, '
+      '(SELECT MAX(pay.date) FROM payments pay WHERE pay.party_id = p.id '
+      'AND pay.direction = $_received) AS last_payment, '
+      '(SELECT MIN(o.date) FROM orders o WHERE o.party_id = p.id '
+      'AND o.kind = $_sale AND o.status != $_cancelled) AS first_sale '
+      'FROM parties p) WHERE balance > 0 ORDER BY balance DESC',
+      readsFrom: {parties, orders, orderItems, payments},
+    ).watch().map(
+      (rows) => [
+        for (final row in rows)
+          Debtor(
+            party: parties.map(row.data),
+            balance: row.read<int>('balance'),
+            lastPaymentAt: row.readNullable<DateTime>('last_payment'),
+            firstSaleAt: row.readNullable<DateTime>('first_sale'),
+          ),
+      ],
     );
+  }
+
+  /// Orders (not cancelled) and payments in date order, with a running
+  /// balance. Positive balance means they owe us.
+  Stream<List<StatementEntry>> watchStatement(int partyId) {
+    return customSelect(
+      'SELECT 0 AS is_payment, o.id AS ref_id, o.kind AS kind, '
+      'o.date AS date, o.created_at AS created_at, NULL AS order_id, '
+      '$_orderTotalSql AS amount, o.notes AS note '
+      'FROM orders o WHERE o.party_id = ?1 AND o.status != $_cancelled '
+      'UNION ALL '
+      'SELECT 1, pay.id, pay.direction, pay.date, pay.created_at, '
+      'pay.order_id, pay.amount_piasters, pay.note '
+      'FROM payments pay WHERE pay.party_id = ?1 '
+      'ORDER BY date, created_at, is_payment',
+      variables: [Variable.withInt(partyId)],
+      readsFrom: {orders, orderItems, payments},
+    ).watch().map((rows) {
+      var balance = 0;
+      final entries = <StatementEntry>[];
+      for (final row in rows) {
+        final isPayment = row.read<int>('is_payment') == 1;
+        final kind = row.read<int>('kind');
+        final amount = row.read<int>('amount');
+        final orderKind = isPayment ? null : OrderKind.values[kind];
+        final direction = isPayment ? PaymentDirection.values[kind] : null;
+        final increases =
+            orderKind == OrderKind.sale || direction == PaymentDirection.paid;
+        balance += increases ? amount : -amount;
+        entries.add(
+          StatementEntry(
+            date: row.read<DateTime>('date'),
+            orderKind: orderKind,
+            paymentDirection: direction,
+            refId: row.read<int>('ref_id'),
+            orderId: row.readNullable<int>('order_id'),
+            amount: amount,
+            note: row.readNullable<String>('note'),
+            balance: balance,
+          ),
+        );
+      }
+      return entries;
+    });
   }
 
   // ----------------------------------------------------------------- orders
@@ -189,20 +387,22 @@ class AppDatabase extends _$AppDatabase {
     final whereSql = where.isEmpty ? '' : 'WHERE ${where.join(' AND ')}';
     final limitSql = limit == null ? '' : 'LIMIT $limit';
     return customSelect(
-      'SELECT o.*, p.name AS party_name, $_orderTotalSql AS total '
+      'SELECT o.*, p.name AS party_name, $_orderTotalSql AS total, '
+      '$_orderPaidSql AS paid '
       'FROM orders o JOIN parties p ON p.id = o.party_id '
       '$whereSql ORDER BY o.date DESC, o.id DESC $limitSql',
       variables: vars,
-      readsFrom: {orders, orderItems, parties},
+      readsFrom: {orders, orderItems, parties, payments},
     ).watch().map((rows) => rows.map(_toSummary).toList());
   }
 
   Stream<OrderSummary> watchOrderSummary(int id) {
     return customSelect(
-      'SELECT o.*, p.name AS party_name, $_orderTotalSql AS total '
+      'SELECT o.*, p.name AS party_name, $_orderTotalSql AS total, '
+      '$_orderPaidSql AS paid '
       'FROM orders o JOIN parties p ON p.id = o.party_id WHERE o.id = ?',
       variables: [Variable.withInt(id)],
-      readsFrom: {orders, orderItems, parties},
+      readsFrom: {orders, orderItems, parties, payments},
     ).watchSingle().map(_toSummary);
   }
 
@@ -210,6 +410,7 @@ class AppDatabase extends _$AppDatabase {
     order: orders.map(row.data),
     partyName: row.read<String>('party_name'),
     totalPiasters: row.read<int>('total'),
+    paidPiasters: row.read<int>('paid'),
   );
 
   Future<Order> getOrder(int id) =>
@@ -222,10 +423,12 @@ class AppDatabase extends _$AppDatabase {
       (select(orderItems)..where((i) => i.orderId.equals(orderId))).watch();
 
   /// Inserts or replaces an order together with its line items atomically.
+  /// [downPayment] (new orders only) is recorded as a payment on the order.
   Future<int> saveOrder(
     OrdersCompanion order,
-    List<OrderItemsCompanion> items,
-  ) {
+    List<OrderItemsCompanion> items, {
+    int downPayment = 0,
+  }) {
     return transaction(() async {
       final id = await into(orders).insertOnConflictUpdate(order);
       final orderId = order.id.present ? order.id.value : id;
@@ -236,6 +439,19 @@ class AppDatabase extends _$AppDatabase {
           items.map((i) => i.copyWith(orderId: Value(orderId))),
         ),
       );
+      if (downPayment > 0) {
+        await into(payments).insert(
+          PaymentsCompanion.insert(
+            partyId: order.partyId.value,
+            orderId: Value(orderId),
+            direction: order.kind.value == OrderKind.sale
+                ? PaymentDirection.received
+                : PaymentDirection.paid,
+            amountPiasters: downPayment,
+            date: order.date.value,
+          ),
+        );
+      }
       return orderId;
     });
   }
@@ -245,42 +461,53 @@ class AppDatabase extends _$AppDatabase {
         OrdersCompanion(status: Value(status)),
       );
 
-  Future<void> updatePaid(int id, int paidPiasters) =>
-      (update(orders)..where((o) => o.id.equals(id))).write(
-        OrdersCompanion(paidPiasters: Value(paidPiasters)),
-      );
-
   Future<void> deleteOrder(int id) =>
       (delete(orders)..where((o) => o.id.equals(id))).go();
+
+  // --------------------------------------------------------------- payments
+
+  Future<int> addPayment(PaymentsCompanion entry) =>
+      into(payments).insert(entry);
+
+  Future<void> deletePayment(int id) =>
+      (delete(payments)..where((p) => p.id.equals(id))).go();
+
+  Stream<List<Payment>> watchPaymentsOf(int orderId) =>
+      (select(payments)
+            ..where((p) => p.orderId.equals(orderId))
+            ..orderBy([(p) => OrderingTerm.asc(p.date)]))
+          .watch();
 
   // -------------------------------------------------------------- dashboard
 
   Stream<DashboardStats> watchDashboard(DateTime now) {
     final dayStart = DateTime(now.year, now.month, now.day);
     final dayEnd = dayStart.add(const Duration(days: 1));
-    const sale = 0;
-    const purchase = 1;
-    final cancelled = OrderStatus.cancelled.index;
     final delivered = OrderStatus.delivered.index;
     return customSelect(
       'SELECT '
-      'COALESCE(SUM(CASE WHEN o.kind = $sale AND o.date >= ?1 AND o.date < ?2 THEN $_orderTotalSql END), 0) AS today_sales, '
-      'COALESCE(SUM(CASE WHEN o.kind = $purchase AND o.date >= ?1 AND o.date < ?2 THEN $_orderTotalSql END), 0) AS today_purchases, '
-      'COALESCE(SUM(CASE WHEN o.kind = $sale THEN $_orderTotalSql - o.paid_piasters END), 0) AS receivables, '
-      'COALESCE(SUM(CASE WHEN o.kind = $purchase THEN $_orderTotalSql - o.paid_piasters END), 0) AS payables, '
-      'COALESCE(SUM(CASE WHEN o.status != $delivered THEN 1 END), 0) AS open_orders '
-      'FROM orders o WHERE o.status != $cancelled',
+      'COALESCE((SELECT SUM($_orderTotalSql) FROM orders o WHERE o.kind = $_sale '
+      'AND o.status != $_cancelled AND o.date >= ?1 AND o.date < ?2), 0) AS today_sales, '
+      'COALESCE((SELECT SUM($_orderTotalSql) FROM orders o WHERE o.kind != $_sale '
+      'AND o.status != $_cancelled AND o.date >= ?1 AND o.date < ?2), 0) AS today_purchases, '
+      'COALESCE((SELECT COUNT(*) FROM orders o WHERE o.status != $_cancelled '
+      'AND o.status != $delivered), 0) AS open_orders, '
+      'COALESCE(SUM(MAX(b.balance, 0)), 0) AS receivables, '
+      'COALESCE(SUM(MAX(-b.balance, 0)), 0) AS payables, '
+      'COALESCE(SUM(b.balance > 0), 0) AS debtors '
+      'FROM (SELECT $_partyBalanceSql AS balance FROM parties p) b',
       variables: [
         Variable.withDateTime(dayStart),
         Variable.withDateTime(dayEnd),
       ],
-      readsFrom: {orders, orderItems},
+      readsFrom: {parties, orders, orderItems, payments},
     ).watchSingle().map(
       (row) => DashboardStats(
         todaySales: row.read<int>('today_sales'),
         todayPurchases: row.read<int>('today_purchases'),
         receivables: row.read<int>('receivables'),
         payables: row.read<int>('payables'),
+        debtors: row.read<int>('debtors'),
         openOrders: row.read<int>('open_orders'),
       ),
     );

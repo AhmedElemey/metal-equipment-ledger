@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show OrderingTerm;
 import 'package:excel/excel.dart';
 
 import '../../../core/database/app_database.dart';
@@ -8,6 +9,10 @@ Future<List<int>> buildExcelReport(AppDatabase db) async {
   final parties = await db.select(db.parties).get();
   final orders = await db.watchOrderSummaries().first;
   final items = await db.select(db.orderItems).get();
+  final payments = await (db.select(
+    db.payments,
+  )..orderBy([(p) => OrderingTerm.asc(p.date)])).get();
+  final balances = await db.partyBalances();
   final orderInfo = {for (final o in orders) o.order.id: o};
 
   final excel = Excel.createExcel();
@@ -42,7 +47,7 @@ Future<List<int>> buildExcelReport(AppDatabase db) async {
       DateCellValue.fromDateTime(o.date),
       t(o.status.label),
       money(s.totalPiasters),
-      money(o.paidPiasters),
+      money(s.paidPiasters),
       money(s.remainingPiasters),
       t(o.notes),
     ]);
@@ -72,36 +77,46 @@ Future<List<int>> buildExcelReport(AppDatabase db) async {
     ]);
   }
 
+  final paymentsSheet = sheet('الدفعات', [
+    'التاريخ',
+    'العميل / المورد',
+    'النوع',
+    'المبلغ',
+    'عن طلب رقم',
+    'ملاحظة',
+  ]);
+  final partyNames = {for (final p in parties) p.id: p.name};
+  for (final p in payments) {
+    paymentsSheet.appendRow([
+      DateCellValue.fromDateTime(p.date),
+      t(partyNames[p.partyId]),
+      t(p.direction == PaymentDirection.received ? 'مستلمة' : 'مدفوعة'),
+      money(p.amountPiasters),
+      p.orderId == null ? null : IntCellValue(p.orderId!),
+      t(p.note),
+    ]);
+  }
+
   final partiesSheet = sheet('العملاء والموردين', [
     'الكود',
     'الاسم',
     'النوع',
     'التليفون',
     'المدينة',
-    'مستحق لنا',
-    'مستحق علينا',
+    'عليه (مستحق لنا)',
+    'له (مستحق علينا)',
     'ملاحظات',
   ]);
-  final dueFrom = <int, int>{};
-  final dueTo = <int, int>{};
-  for (final s in orders) {
-    if (s.order.status == OrderStatus.cancelled) continue;
-    final map = s.order.kind == OrderKind.sale ? dueFrom : dueTo;
-    map.update(
-      s.order.partyId,
-      (v) => v + s.remainingPiasters,
-      ifAbsent: () => s.remainingPiasters,
-    );
-  }
   for (final p in parties) {
+    final balance = balances[p.id] ?? 0;
     partiesSheet.appendRow([
       IntCellValue(p.id),
       t(p.name),
       t(p.kind.label),
       t(p.phone),
       t(p.city),
-      money(dueFrom[p.id] ?? 0),
-      money(dueTo[p.id] ?? 0),
+      money(balance > 0 ? balance : 0),
+      money(balance < 0 ? -balance : 0),
       t(p.notes),
     ]);
   }

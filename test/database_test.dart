@@ -1,4 +1,4 @@
-import 'package:drift/drift.dart' hide isNull;
+import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:excel/excel.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,10 +23,13 @@ void main() {
         ),
       );
 
+  // Every order is 2.5 × 1,000 + 3 × 150.50 = 2,951.50 EGP.
+  const orderTotal = 295150;
+
   Future<int> addOrder(
     int partyId,
     OrderKind kind, {
-    int paid = 0,
+    int downPayment = 0,
     OrderStatus status = OrderStatus.pending,
     DateTime? date,
   }) => db.saveOrder(
@@ -34,11 +37,9 @@ void main() {
       partyId: partyId,
       kind: kind,
       date: date ?? DateTime.now(),
-      paidPiasters: Value(paid),
       status: Value(status),
     ),
     [
-      // 2.5 ton × 1,000 EGP + 3 × 150.50 EGP = 2,951.50 EGP
       OrderItemsCompanion.insert(
         orderId: 0,
         name: 'صاج',
@@ -52,21 +53,41 @@ void main() {
         unitPricePiasters: 15050,
       ),
     ],
+    downPayment: downPayment,
   );
 
-  test('order summary totals items and remaining', () async {
+  Future<void> pay(
+    int partyId,
+    int amount, {
+    PaymentDirection direction = PaymentDirection.received,
+    int? orderId,
+    DateTime? date,
+  }) => db.addPayment(
+    PaymentsCompanion.insert(
+      partyId: partyId,
+      orderId: Value(orderId),
+      direction: direction,
+      amountPiasters: amount,
+      date: date ?? DateTime.now(),
+    ),
+  );
+
+  test('order summary sums items and linked payments', () async {
     final party = await addParty('الحاج محمود');
-    final id = await addOrder(party, OrderKind.sale, paid: 100000);
+    final id = await addOrder(party, OrderKind.sale, downPayment: 100000);
+    await pay(party, 50000, orderId: id);
+    await pay(party, 999); // on account — not part of this order
 
     final s = await db.watchOrderSummary(id).first;
     expect(s.partyName, 'الحاج محمود');
-    expect(s.totalPiasters, 295150);
-    expect(s.remainingPiasters, 195150);
+    expect(s.totalPiasters, orderTotal);
+    expect(s.paidPiasters, 150000);
+    expect(s.remainingPiasters, orderTotal - 150000);
   });
 
-  test('editing an order replaces its items', () async {
+  test('editing an order replaces items and keeps payments', () async {
     final party = await addParty('ورشة النور');
-    final id = await addOrder(party, OrderKind.sale);
+    final id = await addOrder(party, OrderKind.sale, downPayment: 1000);
     final order = await db.getOrder(id);
 
     await db.saveOrder(order.toCompanion(true), [
@@ -78,57 +99,129 @@ void main() {
       ),
     ]);
 
-    final items = await db.itemsOf(id);
-    expect(items.map((i) => i.name), ['زاوية حديد']);
+    expect((await db.itemsOf(id)).map((i) => i.name), ['زاوية حديد']);
+    expect((await db.watchOrderSummary(id).first).paidPiasters, 1000);
   });
 
-  test('party balance splits sales and purchases, ignores cancelled', () async {
+  test('party balance nets sales, purchases and payments', () async {
     final party = await addParty('شركة الصلب', PartyKind.both);
-    await addOrder(party, OrderKind.sale, paid: 95150); // 2000 due from
-    await addOrder(party, OrderKind.purchase); // 2951.50 due to
+    await addOrder(party, OrderKind.sale); // +2951.50
+    await addOrder(party, OrderKind.sale, status: OrderStatus.cancelled);
+    await pay(party, 95150); // -951.50 → they owe 2000
+    expect(await db.watchPartyBalance(party).first, 200000);
+
+    await addOrder(party, OrderKind.purchase); // -2951.50 → we owe 951.50
+    expect(await db.watchPartyBalance(party).first, 200000 - orderTotal);
+
+    await pay(party, 95150, direction: PaymentDirection.paid); // settled
+    expect(await db.watchPartyBalance(party).first, 0);
+  });
+
+  test('statement lists orders and payments with running balance', () async {
+    final party = await addParty('عميل');
+    final d1 = DateTime(2026, 9, 1);
+    final d2 = DateTime(2026, 9, 5);
+    final d3 = DateTime(2026, 9, 10);
+    final first = await addOrder(party, OrderKind.sale, date: d1);
+    await pay(party, 100000, orderId: first, date: d2);
+    await addOrder(party, OrderKind.sale, date: d3);
     await addOrder(party, OrderKind.sale, status: OrderStatus.cancelled);
 
-    final b = await db.watchPartyBalance(party).first;
-    expect(b.dueFromThem, 200000);
-    expect(b.dueToThem, 295150);
+    final s = await db.watchStatement(party).first;
+    expect(s.map((e) => e.isPayment), [false, true, false]);
+    expect(s.map((e) => e.balance), [
+      orderTotal,
+      orderTotal - 100000,
+      2 * orderTotal - 100000,
+    ]);
+    expect(s[1].orderId, first);
+    expect(s[1].increasesBalance, isFalse);
   });
 
-  test('dashboard counts today only for daily totals', () async {
+  test('a down payment on the same day comes after its order', () async {
     final party = await addParty('عميل');
+    await addOrder(party, OrderKind.sale, downPayment: orderTotal);
+    final s = await db.watchStatement(party).first;
+    expect(s.map((e) => e.balance), [orderTotal, 0]);
+  });
+
+  test('debtors: only positive balances, biggest first', () async {
+    final small = await addParty('صغير');
+    final big = await addParty('كبير');
+    final settled = await addParty('خالص');
+    final supplier = await addParty('مورد', PartyKind.seller);
+    await addOrder(small, OrderKind.sale);
+    await pay(small, orderTotal - 100);
+    await addOrder(big, OrderKind.sale, date: DateTime(2026, 8, 1));
+    await addOrder(settled, OrderKind.sale, downPayment: orderTotal);
+    await addOrder(supplier, OrderKind.purchase);
+
+    final debtors = await db.watchDebtors().first;
+    expect(debtors.map((d) => d.party.name), ['كبير', 'صغير']);
+    expect(debtors.first.balance, orderTotal);
+    expect(debtors.first.lastPaymentAt, isNull);
+    expect(debtors.first.lastActivityAt, DateTime(2026, 8, 1));
+    expect(debtors.last.lastPaymentAt, isNotNull);
+
+    await db.markReminded(big, DateTime(2026, 10, 1, 10));
+    final again = await db.watchDebtors().first;
+    expect(again.first.party.lastRemindedAt, DateTime(2026, 10, 1, 10));
+  });
+
+  test('dashboard: today totals and net receivables/payables', () async {
+    final client = await addParty('عميل');
+    final supplier = await addParty('مورد', PartyKind.seller);
     final now = DateTime(2026, 10, 1, 12);
-    await addOrder(party, OrderKind.sale, date: now);
+    await addOrder(client, OrderKind.sale, date: now);
     await addOrder(
-      party,
+      client,
       OrderKind.sale,
       date: now.subtract(const Duration(days: 1)),
       status: OrderStatus.delivered,
     );
-    await addOrder(party, OrderKind.purchase, date: now, paid: 295150);
+    await addOrder(supplier, OrderKind.purchase, date: now);
+    await pay(supplier, 100000, direction: PaymentDirection.paid);
 
     final d = await db.watchDashboard(now).first;
-    expect(d.todaySales, 295150);
-    expect(d.todayPurchases, 295150);
-    expect(d.receivables, 295150 * 2);
-    expect(d.payables, 0);
+    expect(d.todaySales, orderTotal);
+    expect(d.todayPurchases, orderTotal);
+    expect(d.receivables, 2 * orderTotal);
+    expect(d.payables, orderTotal - 100000);
+    expect(d.debtors, 1);
     expect(d.openOrders, 2);
   });
 
-  test('a party with orders cannot be deleted', () async {
-    final party = await addParty('عميل');
-    await addOrder(party, OrderKind.sale);
-    expect(() => db.deleteParty(party), throwsA(isA<Exception>()));
+  test('a party with orders or payments cannot be deleted', () async {
+    final withOrder = await addParty('عميل');
+    await addOrder(withOrder, OrderKind.sale);
+    final withPayment = await addParty('عميل 2');
+    await pay(withPayment, 100);
+    final clean = await addParty('جديد');
+
+    expect(await db.hasHistory(withOrder), isTrue);
+    expect(await db.hasHistory(withPayment), isTrue);
+    expect(await db.hasHistory(clean), isFalse);
+    expect(() => db.deleteParty(withPayment), throwsA(isA<Exception>()));
   });
 
-  test('excel report has the three Arabic sheets', () async {
+  test('deleting an order keeps its payments on the account', () async {
+    final party = await addParty('عميل');
+    final id = await addOrder(party, OrderKind.sale, downPayment: 5000);
+    await db.deleteOrder(id);
+    expect(await db.watchPartyBalance(party).first, -5000);
+  });
+
+  test('excel report has the four Arabic sheets', () async {
     final party = await addParty('الحاج محمود');
-    await addOrder(party, OrderKind.sale);
+    await addOrder(party, OrderKind.sale, downPayment: 1000);
 
     final excel = Excel.decodeBytes(await buildExcelReport(db));
     expect(
       excel.tables.keys,
-      containsAll(['الطلبات', 'الأصناف', 'العملاء والموردين']),
+      containsAll(['الطلبات', 'الأصناف', 'الدفعات', 'العملاء والموردين']),
     );
     expect(excel.tables['الطلبات']!.maxRows, 2);
     expect(excel.tables['الأصناف']!.maxRows, 3);
+    expect(excel.tables['الدفعات']!.maxRows, 2);
   });
 }

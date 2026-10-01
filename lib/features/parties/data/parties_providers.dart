@@ -10,8 +10,3 @@ final partiesProvider = StreamProvider.autoDispose.family<List<Party>, String>(
 final partyProvider = StreamProvider.autoDispose.family<Party, int>(
   (ref, id) => ref.watch(databaseProvider).watchParty(id),
 );
-
-final partyBalanceProvider = StreamProvider.autoDispose
-    .family<PartyBalance, int>(
-      (ref, id) => ref.watch(databaseProvider).watchPartyBalance(id),
-    );

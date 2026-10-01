@@ -4,12 +4,14 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/database/database_provider.dart';
-import '../../../core/formatters.dart';
 import '../../../core/labels.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/async_value_view.dart';
 import '../../../core/widgets/section_header.dart';
 import '../../../core/widgets/total_row.dart';
+import '../../accounts/data/account_messages.dart';
+import '../../accounts/data/accounts_providers.dart';
+import '../../accounts/presentation/statement_screen.dart';
 import '../../orders/data/orders_providers.dart';
 import '../../orders/presentation/order_tile.dart';
 import '../../voice_notes/data/voice_notes_providers.dart';
@@ -55,12 +57,12 @@ class PartyDetailsScreen extends ConsumerWidget {
 
   Future<void> _delete(BuildContext context, WidgetRef ref) async {
     final db = ref.read(databaseProvider);
-    final orders = await db.watchOrderSummaries(partyId: partyId).first;
+    final hasHistory = await db.hasHistory(partyId);
     if (!context.mounted) return;
-    if (orders.isNotEmpty) {
+    if (hasHistory) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('لا يمكن الحذف: يوجد طلبات مسجلة لهذا الطرف'),
+          content: Text('لا يمكن الحذف: يوجد طلبات أو دفعات مسجلة لهذا الطرف'),
         ),
       );
       return;
@@ -157,29 +159,45 @@ class _PartyBody extends ConsumerWidget {
             ),
           ),
         ),
-        if (balance != null)
-          SliverToBoxAdapter(
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    TotalRow(
-                      'مستحق لنا عنده',
-                      formatMoney(balance.dueFromThem),
-                      bold: true,
-                      color: balance.dueFromThem > 0 ? AppColors.danger : null,
-                    ),
-                    TotalRow(
-                      'مستحق له علينا',
-                      formatMoney(balance.dueToThem),
-                      bold: true,
-                    ),
-                  ],
-                ),
+        SliverToBoxAdapter(
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  TotalRow(
+                    'الرصيد',
+                    balance == null ? '…' : balanceLabel(balance),
+                    bold: true,
+                    color: (balance ?? 0) > 0 ? AppColors.danger : null,
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () =>
+                              context.push('/parties/${party.id}/statement'),
+                          icon: const Icon(Icons.receipt_long),
+                          label: const Text('كشف حساب'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: () =>
+                              recordPartyPayment(context, ref, party),
+                          icon: const Icon(Icons.payments_outlined),
+                          label: const Text('تسجيل دفعة'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ),
+        ),
         VoiceNotesSliver(partyId: party.id),
         SliverToBoxAdapter(
           child: SectionHeader(title: 'سجل الطلبات (${orders.length})'),
