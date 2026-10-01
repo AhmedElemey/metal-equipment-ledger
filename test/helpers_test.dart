@@ -3,6 +3,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:metal_ledger/core/arabic_search.dart';
 import 'package:metal_ledger/core/database/app_database.dart';
 import 'package:metal_ledger/core/formatters.dart';
+import 'package:metal_ledger/core/pdf.dart';
 import 'package:metal_ledger/features/accounts/data/account_messages.dart';
 import 'package:metal_ledger/features/backup/data/backup_schedule.dart';
 import 'package:metal_ledger/features/parties/presentation/contact_launcher.dart';
@@ -16,6 +17,14 @@ void main() {
     expect(arabicMatches('مكنة لحام', 'ماكينة'), isFalse);
     expect(arabicMatches('مَسامير', 'مسامير'), isTrue);
     expect(arabicMatches('كرسى', 'كرسي'), isTrue);
+  });
+
+  test('fixArabicSpacing doubles the space after ر and ز only', () {
+    expect(fixArabicSpacing('أكبر العملاء'), 'أكبر  العملاء');
+    expect(fixArabicSpacing('عمر الشريف'), 'عمر  الشريف');
+    expect(fixArabicSpacing('خبز طازج'), 'خبز  طازج');
+    expect(fixArabicSpacing('صافي الربح'), 'صافي الربح');
+    expect(fixArabicSpacing('أكبر  العملاء'), 'أكبر  العملاء'); // idempotent
   });
 
   test('parseMoneyToPiasters handles separators and Arabic digits', () {

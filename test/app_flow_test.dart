@@ -1,4 +1,5 @@
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart'
+    show ApplyInterceptor, QueryExecutor, QueryInterceptor, Value;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,6 +20,10 @@ void main() {
         InMemorySharedPreferencesAsync.empty();
     SharedPreferences.setMockInitialValues({});
   });
+
+  // The router is app-global: start every test from the home screen so
+  // tests don't depend on which one ran before.
+  setUp(() => router.go('/'));
 
   testWidgets('add a client, then a sale order for them', (tester) async {
     // A typical Android phone screen.
@@ -424,4 +429,111 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 1));
   });
+
+  testWidgets('monthly report and order profit', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final db = AppDatabase(NativeDatabase.memory());
+    final now = DateTime.now();
+    final saleId = await tester.runAsync(() async {
+      final supplier = await db.saveParty(
+        PartiesCompanion.insert(name: 'مورد', kind: PartyKind.seller),
+      );
+      final client = await db.saveParty(
+        PartiesCompanion.insert(name: 'عميل', kind: PartyKind.buyer),
+      );
+      Future<int> order(int party, OrderKind kind, int price) => db.saveOrder(
+        OrdersCompanion.insert(partyId: party, kind: kind, date: now),
+        [
+          OrderItemsCompanion.insert(
+            orderId: 0,
+            name: 'صاج',
+            quantity: 2,
+            unitPricePiasters: price,
+          ),
+        ],
+      );
+      await order(supplier, OrderKind.purchase, 90000);
+      await db.addExpense(
+        ExpensesCompanion.insert(
+          date: now,
+          category: 'نقل',
+          amountPiasters: 5000,
+        ),
+      );
+      return order(client, OrderKind.sale, 100000);
+    });
+
+    router.go('/orders/$saleId');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db)],
+        child: const MetalLedgerApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('الربح التقريبي'), findsOneWidget);
+    expect(find.text('200 ج.م'), findsOneWidget); // 2 × (1,000 − 900)
+
+    router.go('/');
+    await tester.pumpAndSettle();
+    // Bring the tile clear of the bottom navigation bar before tapping.
+    await tester.scrollUntilVisible(find.text('التقرير الشهري'), 200);
+    await Scrollable.ensureVisible(
+      tester.element(find.text('التقرير الشهري')),
+      alignment: 0.5,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('التقرير الشهري'));
+    await tester.pumpAndSettle();
+    expect(find.text('150 ج.م'), findsOneWidget); // 200 profit − 50 expenses
+    expect(find.text('عميل'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('a double tap on save records the expense once', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    // Writes take time on a phone; that's when a second tap gets through.
+    final db = AppDatabase(
+      NativeDatabase.memory().interceptWith(_SlowWrites()),
+    );
+    router.go('/expenses');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db)],
+        child: const MetalLedgerApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('مصروف جديد'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextFormField, 'المبلغ'), '100');
+
+    await tester.tap(find.text('حفظ'));
+    await tester.tap(find.text('حفظ'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+
+    final rows = await tester.runAsync(() => db.select(db.expenses).get());
+    expect(rows, hasLength(1));
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
+}
+
+class _SlowWrites extends QueryInterceptor {
+  @override
+  Future<int> runInsert(
+    QueryExecutor executor,
+    String statement,
+    List<Object?> args,
+  ) async {
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    return executor.runInsert(statement, args);
+  }
 }

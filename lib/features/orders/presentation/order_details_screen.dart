@@ -18,6 +18,8 @@ import '../../accounts/presentation/record_payment_dialog.dart';
 import '../../business/data/business_info.dart';
 import '../../parties/presentation/contact_launcher.dart';
 import '../../voice_notes/presentation/voice_notes_section.dart';
+import '../../../core/pdf.dart';
+import '../../reports/data/report_providers.dart';
 import '../data/order_pdf.dart';
 import '../data/orders_providers.dart';
 
@@ -171,6 +173,8 @@ class _OrderBody extends ConsumerWidget {
                           ? AppColors.danger
                           : null,
                     ),
+                    if (order.kind == OrderKind.sale)
+                      _ProfitRow(orderId: order.id),
                   ],
                   const SizedBox(height: 12),
                   Row(
@@ -344,6 +348,33 @@ class _OrderBody extends ConsumerWidget {
       {'text': lines.join('\n')},
     );
     await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+}
+
+class _ProfitRow extends ConsumerWidget {
+  const _ProfitRow({required this.orderId});
+
+  final int orderId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final p = ref.watch(orderProfitProvider(orderId)).value;
+    if (p == null) return const SizedBox.shrink();
+    return Column(
+      children: [
+        const Divider(),
+        TotalRow(
+          'الربح التقريبي',
+          formatMoney(p.profit),
+          color: p.profit >= 0 ? AppColors.sale : AppColors.danger,
+        ),
+        if (p.uncostedLines > 0)
+          Text(
+            '${p.uncostedLines} صنف بدون سعر شراء لم يُحسب',
+            style: const TextStyle(color: AppColors.orange, fontSize: 12),
+          ),
+      ],
+    );
   }
 }
 

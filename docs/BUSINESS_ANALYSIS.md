@@ -30,8 +30,8 @@ to him versus effort.
 | # | Feature | Why |
 |---|---|---|
 | 6 | ✅ **Stock (المخزون)** — done in v1.5: quantities go up on purchase and down on sale, with a low-stock alert | Knows what he has before promising a client. |
-| 7 | **Profit per order and per month** (sell price − purchase cost) | Shows which items and clients actually make money. |
-| 8 | **Monthly report** (sales, purchases, collections, top clients/items) shared as PDF | End-of-month review without spreadsheets. |
+| 7 | ✅ **Profit per order and per month** — done in v1.7 (average purchase cost) (sell price − purchase cost) | Shows which items and clients actually make money. |
+| 8 | ✅ **Monthly report** — done in v1.7 (sales, purchases, collections, top clients/items) shared as PDF | End-of-month review without spreadsheets. |
 | 9 | ✅ **Expenses** — done in v1.6 (transport, loading, workshop rent) | Profit then reflects real costs. |
 | 10 | **Weight-based pricing**: price per kg/ton, with the weight computed from dimensions for sheets, pipes and angles | Very common in metal trading, and it removes calculator errors. |
 

@@ -422,6 +422,115 @@ void main() {
     expect(october.map((e) => e.amountPiasters), [300, 200, 100]);
   });
 
+  group('profit', () {
+    Future<int> line(
+      int party,
+      OrderKind kind,
+      String name,
+      double qty,
+      int price,
+      DateTime date, {
+      OrderStatus status = OrderStatus.pending,
+    }) => db.saveOrder(
+      OrdersCompanion.insert(
+        partyId: party,
+        kind: kind,
+        date: date,
+        status: Value(status),
+      ),
+      [
+        OrderItemsCompanion.insert(
+          orderId: 0,
+          name: name,
+          quantity: qty,
+          unitPricePiasters: price,
+        ),
+      ],
+    );
+
+    test('uses the weighted average purchase cost', () async {
+      final supplier = await addParty('مورد', PartyKind.seller);
+      final client = await addParty('عميل');
+      final d = DateTime(2026, 10, 5);
+      // 1 × 800 + 3 × 1,000 → average 950.
+      await line(supplier, OrderKind.purchase, 'صاج', 1, 80000, d);
+      await line(supplier, OrderKind.purchase, 'صاج', 3, 100000, d);
+      await line(
+        supplier,
+        OrderKind.purchase,
+        'صاج',
+        5,
+        1,
+        d,
+        status: OrderStatus.cancelled,
+      );
+      final sale = await db.saveOrder(
+        OrdersCompanion.insert(partyId: client, kind: OrderKind.sale, date: d),
+        [
+          OrderItemsCompanion.insert(
+            orderId: 0,
+            name: 'صاج',
+            quantity: 2,
+            unitPricePiasters: 120000,
+          ),
+          OrderItemsCompanion.insert(
+            orderId: 0,
+            name: 'صنف جديد', // never bought
+            quantity: 1,
+            unitPricePiasters: 5000,
+          ),
+        ],
+      );
+
+      final p = await db.watchOrderProfit(sale).first;
+      expect(p, (profit: 2 * (120000 - 95000), uncostedLines: 1));
+    });
+
+    test('monthly report: totals, profit after expenses, top lists', () async {
+      final supplier = await addParty('مورد', PartyKind.seller);
+      final big = await addParty('عميل كبير');
+      final small = await addParty('عميل صغير');
+      final oct = DateTime(2026, 10, 10);
+      await line(supplier, OrderKind.purchase, 'صاج', 10, 90000, oct);
+      await line(big, OrderKind.sale, 'صاج', 3, 100000, oct);
+      await line(small, OrderKind.sale, 'صاج', 1, 110000, oct);
+      await line(big, OrderKind.sale, 'صاج', 9, 1, DateTime(2026, 9, 30));
+      await line(
+        small,
+        OrderKind.sale,
+        'صاج',
+        9,
+        1,
+        oct,
+        status: OrderStatus.quotation,
+      );
+      await pay(big, 150000, date: oct);
+      await pay(supplier, 400000, direction: PaymentDirection.paid, date: oct);
+      await db.addExpense(
+        ExpensesCompanion.insert(
+          date: oct,
+          category: 'نقل',
+          amountPiasters: 5000,
+        ),
+      );
+
+      final r = await db
+          .watchMonthlyReport(DateTime(2026, 10), DateTime(2026, 11))
+          .first;
+      expect(r.sales, 410000);
+      expect(r.purchases, 900000);
+      expect(r.received, 150000);
+      expect(r.paidOut, 400000);
+      expect(r.expenses, 5000);
+      // Sept sale (price 1) is outside; average cost includes all purchases.
+      expect(r.grossProfit, 3 * 10000 + 1 * 20000);
+      expect(r.netProfit, 50000 - 5000);
+      expect(r.uncostedLines, 0);
+      expect(r.topClients.map((c) => c.name), ['عميل كبير', 'عميل صغير']);
+      expect(r.topItems.single, (name: 'صاج', total: 410000));
+    });
+  });
+
   test('excel report has the four Arabic sheets', () async {
     final party = await addParty('الحاج محمود');
     await addOrder(party, OrderKind.sale, downPayment: 1000);

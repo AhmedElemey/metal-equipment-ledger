@@ -3266,6 +3266,34 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   );
   late final $ItemSettingsTable itemSettings = $ItemSettingsTable(this);
   late final $ExpensesTable expenses = $ExpensesTable(this);
+  late final Index ordersParty = Index(
+    'orders_party',
+    'CREATE INDEX orders_party ON orders (party_id)',
+  );
+  late final Index ordersDate = Index(
+    'orders_date',
+    'CREATE INDEX orders_date ON orders (date)',
+  );
+  late final Index orderItemsOrder = Index(
+    'order_items_order',
+    'CREATE INDEX order_items_order ON order_items (order_id)',
+  );
+  late final Index orderItemsName = Index(
+    'order_items_name',
+    'CREATE INDEX order_items_name ON order_items (name)',
+  );
+  late final Index paymentsParty = Index(
+    'payments_party',
+    'CREATE INDEX payments_party ON payments (party_id)',
+  );
+  late final Index paymentsOrder = Index(
+    'payments_order',
+    'CREATE INDEX payments_order ON payments (order_id)',
+  );
+  late final Index voiceNotesParty = Index(
+    'voice_notes_party',
+    'CREATE INDEX voice_notes_party ON voice_notes (party_id)',
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3279,6 +3307,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     stockAdjustments,
     itemSettings,
     expenses,
+    ordersParty,
+    ordersDate,
+    orderItemsOrder,
+    orderItemsName,
+    paymentsParty,
+    paymentsOrder,
+    voiceNotesParty,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([

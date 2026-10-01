@@ -35,6 +35,8 @@ class Parties extends Table {
   DateTimeColumn get lastRemindedAt => dateTime().nullable()();
 }
 
+@TableIndex(name: 'orders_party', columns: {#partyId})
+@TableIndex(name: 'orders_date', columns: {#date})
 class Orders extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get partyId =>
@@ -47,6 +49,8 @@ class Orders extends Table {
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 
+@TableIndex(name: 'order_items_order', columns: {#orderId})
+@TableIndex(name: 'order_items_name', columns: {#name})
 class OrderItems extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get orderId =>
@@ -59,6 +63,8 @@ class OrderItems extends Table {
   IntColumn get unitPricePiasters => integer()();
 }
 
+@TableIndex(name: 'payments_party', columns: {#partyId})
+@TableIndex(name: 'payments_order', columns: {#orderId})
 class Payments extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get partyId =>
@@ -110,6 +116,7 @@ class Expenses extends Table {
   TextColumn get note => text().nullable()();
 }
 
+@TableIndex(name: 'voice_notes_party', columns: {#partyId})
 class VoiceNotes extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get partyId =>
@@ -214,6 +221,39 @@ class BackupTooNew implements Exception {
   const BackupTooNew();
 }
 
+/// Estimated profit: Σ (sale price − average purchase cost) × quantity,
+/// over lines whose item has been bought before. [uncostedLines] counts
+/// lines left out because the item has no purchase price yet.
+typedef Profit = ({int profit, int uncostedLines});
+
+class MonthlyReport {
+  const MonthlyReport({
+    required this.sales,
+    required this.purchases,
+    required this.received,
+    required this.paidOut,
+    required this.expenses,
+    required this.grossProfit,
+    required this.uncostedLines,
+    required this.topClients,
+    required this.topItems,
+  });
+
+  final int sales;
+  final int purchases;
+  final int received;
+  final int paidOut;
+  final int expenses;
+  final int grossProfit;
+  final int uncostedLines;
+
+  /// Biggest clients and items by sales value this month.
+  final List<({String name, int total})> topClients;
+  final List<({String name, int total})> topItems;
+
+  int get netProfit => grossProfit - expenses;
+}
+
 /// A party that owes us money, for the collections list.
 class Debtor {
   const Debtor({
@@ -279,6 +319,21 @@ const _quotation = 4; // OrderStatus.quotation.index
 /// Orders that are real business: not cancelled and not a quotation.
 const _counts = 'o.status NOT IN ($_cancelled, $_quotation)';
 
+/// Average purchase cost per item name (piasters per unit), from all real
+/// purchase orders, weighted by quantity.
+const _avgCostCte =
+    'cost AS (SELECT i.name, '
+    'SUM(i.quantity * i.unit_price_piasters) / SUM(i.quantity) AS avg_cost '
+    'FROM order_items i JOIN orders o ON o.id = i.order_id '
+    'WHERE o.kind != $_sale AND $_counts AND i.quantity > 0 GROUP BY i.name)';
+
+/// Profit columns over `order_items i` joined to `cost c`.
+const _profitColumnsSql =
+    'COALESCE(SUM(CASE WHEN c.avg_cost IS NOT NULL THEN '
+    'CAST(ROUND(i.quantity * (i.unit_price_piasters - c.avg_cost)) AS INTEGER) '
+    'END), 0) AS profit, '
+    'COALESCE(SUM(c.avg_cost IS NULL), 0) AS uncosted';
+
 const _orderTotalSql =
     'COALESCE((SELECT SUM(CAST(ROUND(i.quantity * i.unit_price_piasters) AS INTEGER)) '
     'FROM order_items i WHERE i.order_id = o.id), 0)';
@@ -315,7 +370,7 @@ class AppDatabase extends _$AppDatabase {
   static const fileName = 'metal_ledger';
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -338,6 +393,21 @@ class AppDatabase extends _$AppDatabase {
         await m.createTable(itemSettings);
       }
       if (from < 4) await m.createTable(expenses);
+      if (from < 5) {
+        // Without these, every total re-scans whole tables (6 s for the
+        // home screen at 5,000 orders — see test/stress_test.dart).
+        for (final index in [
+          ordersParty,
+          ordersDate,
+          orderItemsOrder,
+          orderItemsName,
+          paymentsParty,
+          paymentsOrder,
+          voiceNotesParty,
+        ]) {
+          await m.createIndex(index);
+        }
+      }
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
@@ -691,6 +761,84 @@ class AppDatabase extends _$AppDatabase {
           ),
       },
     );
+  }
+
+  // ----------------------------------------------------------------- profit
+
+  /// Estimated profit of one sale order.
+  Stream<Profit> watchOrderProfit(int orderId) {
+    return customSelect(
+      'WITH $_avgCostCte SELECT $_profitColumnsSql '
+      'FROM order_items i LEFT JOIN cost c ON c.name = i.name '
+      'WHERE i.order_id = ?',
+      variables: [Variable.withInt(orderId)],
+      readsFrom: {orders, orderItems},
+    ).watchSingle().map(
+      (r) => (
+        profit: r.read<int>('profit'),
+        uncostedLines: r.read<int>('uncosted'),
+      ),
+    );
+  }
+
+  /// Totals for orders, payments and expenses dated within [from, to).
+  Stream<MonthlyReport> watchMonthlyReport(DateTime from, DateTime to) {
+    final range = [Variable.withDateTime(from), Variable.withDateTime(to)];
+    const inRange = 'o.date >= ?1 AND o.date < ?2';
+    final totals = customSelect(
+      'WITH $_avgCostCte SELECT '
+      'COALESCE((SELECT SUM($_orderTotalSql) FROM orders o '
+      'WHERE o.kind = $_sale AND $_counts AND $inRange), 0) AS sales, '
+      'COALESCE((SELECT SUM($_orderTotalSql) FROM orders o '
+      'WHERE o.kind != $_sale AND $_counts AND $inRange), 0) AS purchases, '
+      'COALESCE((SELECT SUM(amount_piasters) FROM payments '
+      'WHERE direction = $_received AND date >= ?1 AND date < ?2), 0) AS received, '
+      'COALESCE((SELECT SUM(amount_piasters) FROM payments '
+      'WHERE direction != $_received AND date >= ?1 AND date < ?2), 0) AS paid_out, '
+      'COALESCE((SELECT SUM(amount_piasters) FROM expenses '
+      'WHERE date >= ?1 AND date < ?2), 0) AS expenses, '
+      'p.profit, p.uncosted '
+      'FROM (SELECT $_profitColumnsSql FROM order_items i '
+      'JOIN orders o ON o.id = i.order_id LEFT JOIN cost c ON c.name = i.name '
+      'WHERE o.kind = $_sale AND $_counts AND $inRange) p',
+      variables: range,
+      // Includes parties so a renamed client refreshes the top list too.
+      readsFrom: {orders, orderItems, payments, expenses, parties},
+    ).watchSingle();
+    final topClients = customSelect(
+      'SELECT p.name AS name, SUM($_orderTotalSql) AS total FROM orders o '
+      'JOIN parties p ON p.id = o.party_id '
+      'WHERE o.kind = $_sale AND $_counts AND $inRange '
+      'GROUP BY p.id ORDER BY total DESC LIMIT 5',
+      variables: range,
+    );
+    final topItems = customSelect(
+      'SELECT i.name AS name, '
+      'SUM(CAST(ROUND(i.quantity * i.unit_price_piasters) AS INTEGER)) AS total '
+      'FROM order_items i JOIN orders o ON o.id = i.order_id '
+      'WHERE o.kind = $_sale AND $_counts AND $inRange '
+      'GROUP BY i.name ORDER BY total DESC LIMIT 5',
+      variables: range,
+    );
+    List<({String name, int total})> ranked(List<QueryRow> rows) => [
+      for (final r in rows)
+        (name: r.read<String>('name'), total: r.read<int>('total')),
+    ];
+    // The totals query watches every table the report uses; each emission
+    // re-reads the two top-5 lists.
+    return totals.asyncMap((t) async {
+      return MonthlyReport(
+        sales: t.read<int>('sales'),
+        purchases: t.read<int>('purchases'),
+        received: t.read<int>('received'),
+        paidOut: t.read<int>('paid_out'),
+        expenses: t.read<int>('expenses'),
+        grossProfit: t.read<int>('profit'),
+        uncostedLines: t.read<int>('uncosted'),
+        topClients: ranked(await topClients.get()),
+        topItems: ranked(await topItems.get()),
+      );
+    });
   }
 
   // --------------------------------------------------------------- expenses

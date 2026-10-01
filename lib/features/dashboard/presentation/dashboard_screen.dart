@@ -145,6 +145,11 @@ class DashboardScreen extends ConsumerWidget {
                   '/collections',
                 ),
                 _ToolTile(Icons.money_off_outlined, 'المصروفات', '/expenses'),
+                _ToolTile(
+                  Icons.bar_chart_outlined,
+                  'التقرير الشهري',
+                  '/report',
+                ),
               ],
             ),
           ),

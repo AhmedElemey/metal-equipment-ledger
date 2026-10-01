@@ -171,6 +171,7 @@ class _AddExpenseSheetState extends ConsumerState<_AddExpenseSheet> {
   final _note = TextEditingController();
   String _category = expenseCategories.first;
   DateTime _date = DateTime.now();
+  bool _saving = false;
 
   @override
   void dispose() {
@@ -191,7 +192,8 @@ class _AddExpenseSheetState extends ConsumerState<_AddExpenseSheet> {
   }
 
   Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_saving || !_formKey.currentState!.validate()) return;
+    setState(() => _saving = true);
     final note = _note.text.trim();
     await ref
         .read(databaseProvider)
@@ -261,7 +263,7 @@ class _AddExpenseSheetState extends ConsumerState<_AddExpenseSheet> {
               ),
               const SizedBox(height: 16),
               FilledButton.icon(
-                onPressed: _save,
+                onPressed: _saving ? null : _save,
                 icon: const Icon(Icons.save),
                 label: const Text('حفظ'),
                 style: FilledButton.styleFrom(minimumSize: const Size(0, 52)),

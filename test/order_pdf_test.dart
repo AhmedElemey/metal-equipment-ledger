@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:metal_ledger/core/database/app_database.dart';
 import 'package:metal_ledger/features/orders/data/order_pdf.dart';
+import 'package:metal_ledger/features/reports/data/report_pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 OrderSummary _summary(OrderStatus status) => OrderSummary(
@@ -94,5 +95,30 @@ void main() {
         File('$out/${status.name}-${items.length}.pdf').writeAsBytesSync(bytes);
       }
     }
+  });
+
+  test('builds the monthly report PDF', () async {
+    final bytes = await buildMonthlyReportPdf(
+      report: const MonthlyReport(
+        sales: 4100000,
+        purchases: 9000000,
+        received: 1500000,
+        paidOut: 4000000,
+        expenses: 50000,
+        grossProfit: 500000,
+        uncostedLines: 1,
+        topClients: [
+          (name: 'عميل كبير', total: 3000000),
+          (name: 'عميل صغير', total: 1100000),
+        ],
+        topItems: [(name: 'صاج حديد 2 مم', total: 4100000)],
+      ),
+      month: DateTime(2026, 10),
+      business: (name: 'المعدات الحديثة', phone: '', address: ''),
+      font: font,
+    );
+    expect(String.fromCharCodes(bytes.take(4)), '%PDF');
+    final out = Platform.environment['PDF_OUT'];
+    if (out != null) File('$out/report.pdf').writeAsBytesSync(bytes);
   });
 }

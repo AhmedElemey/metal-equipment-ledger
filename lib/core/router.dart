@@ -12,6 +12,7 @@ import '../features/orders/presentation/order_edit_screen.dart';
 import '../features/orders/presentation/order_form_screen.dart';
 import '../features/orders/presentation/orders_screen.dart';
 import '../features/parties/presentation/parties_screen.dart';
+import '../features/reports/presentation/monthly_report_screen.dart';
 import '../features/parties/presentation/party_details_screen.dart';
 import '../features/parties/presentation/party_edit_screen.dart';
 import '../features/parties/presentation/party_form_screen.dart';
@@ -42,6 +43,7 @@ final router = GoRouter(
     ),
     GoRoute(path: '/collections', builder: (_, _) => const CollectionsScreen()),
     GoRoute(path: '/expenses', builder: (_, _) => const ExpensesScreen()),
+    GoRoute(path: '/report', builder: (_, _) => const MonthlyReportScreen()),
     GoRoute(
       path: '/items',
       builder: (_, s) =>
