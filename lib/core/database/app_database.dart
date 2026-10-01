@@ -101,6 +101,15 @@ class ItemSettings extends Table {
   Set<Column> get primaryKey => {itemName};
 }
 
+/// Business costs not tied to an order: transport, loading, rent…
+class Expenses extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  DateTimeColumn get date => dateTime()();
+  TextColumn get category => text()();
+  IntColumn get amountPiasters => integer()();
+  TextColumn get note => text().nullable()();
+}
+
 class VoiceNotes extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get partyId =>
@@ -297,6 +306,7 @@ const _partyBalanceSql =
     VoiceNotes,
     StockAdjustments,
     ItemSettings,
+    Expenses,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -305,7 +315,7 @@ class AppDatabase extends _$AppDatabase {
   static const fileName = 'metal_ledger';
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -327,6 +337,7 @@ class AppDatabase extends _$AppDatabase {
         await m.createTable(stockAdjustments);
         await m.createTable(itemSettings);
       }
+      if (from < 4) await m.createTable(expenses);
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
@@ -682,6 +693,25 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  // --------------------------------------------------------------- expenses
+
+  /// Expenses dated within [from, to), newest first.
+  Stream<List<Expense>> watchExpenses(DateTime from, DateTime to) =>
+      (select(expenses)
+            ..where((e) => e.date.isBiggerOrEqualValue(from))
+            ..where((e) => e.date.isSmallerThanValue(to))
+            ..orderBy([
+              (e) => OrderingTerm.desc(e.date),
+              (e) => OrderingTerm.desc(e.id),
+            ]))
+          .watch();
+
+  Future<int> addExpense(ExpensesCompanion entry) =>
+      into(expenses).insert(entry);
+
+  Future<void> deleteExpense(int id) =>
+      (delete(expenses)..where((e) => e.id.equals(id))).go();
+
   // --------------------------------------------------------------- payments
 
   Future<int> addPayment(PaymentsCompanion entry) =>
@@ -783,6 +813,7 @@ class AppDatabase extends _$AppDatabase {
       voiceNotes,
       stockAdjustments,
       itemSettings,
+      expenses,
     ];
     await customStatement('ATTACH DATABASE ? AS backup', [backup.path]);
     try {

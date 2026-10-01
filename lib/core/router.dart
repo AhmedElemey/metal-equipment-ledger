@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../features/accounts/presentation/collections_screen.dart';
 import '../features/accounts/presentation/statement_screen.dart';
 import '../features/backup/presentation/settings_screen.dart';
+import '../features/expenses/presentation/expenses_screen.dart';
 import '../features/items/presentation/items_screen.dart';
 import '../features/dashboard/presentation/dashboard_screen.dart';
 import '../features/orders/presentation/order_details_screen.dart';
@@ -40,6 +41,7 @@ final router = GoRouter(
       builder: (_, s) => StatementScreen(partyId: _id(s)),
     ),
     GoRoute(path: '/collections', builder: (_, _) => const CollectionsScreen()),
+    GoRoute(path: '/expenses', builder: (_, _) => const ExpensesScreen()),
     GoRoute(
       path: '/items',
       builder: (_, s) =>

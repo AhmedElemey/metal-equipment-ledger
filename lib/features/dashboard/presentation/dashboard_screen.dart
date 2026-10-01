@@ -129,6 +129,25 @@ class DashboardScreen extends ConsumerWidget {
               ),
             ),
           ),
+          const SliverToBoxAdapter(child: SectionHeader(title: 'أدوات')),
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            sliver: SliverGrid.count(
+              crossAxisCount: 3,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+              childAspectRatio: 1.15,
+              children: const [
+                _ToolTile(Icons.inventory_2_outlined, 'المخزون', '/items'),
+                _ToolTile(
+                  Icons.notifications_active_outlined,
+                  'التحصيل',
+                  '/collections',
+                ),
+                _ToolTile(Icons.money_off_outlined, 'المصروفات', '/expenses'),
+              ],
+            ),
+          ),
           SliverToBoxAdapter(
             child: SectionHeader(
               title:
@@ -148,6 +167,33 @@ class DashboardScreen extends ConsumerWidget {
             itemBuilder: (_, i) => OrderTile(summary: recent[i]),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ToolTile extends StatelessWidget {
+  const _ToolTile(this.icon, this.label, this.route);
+
+  final IconData icon;
+  final String label;
+  final String route;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => context.push(route),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 32, color: AppColors.steel),
+            const SizedBox(height: 6),
+            Text(label, textAlign: TextAlign.center),
+          ],
+        ),
       ),
     );
   }

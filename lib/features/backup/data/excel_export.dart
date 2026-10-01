@@ -122,6 +122,23 @@ Future<List<int>> buildExcelReport(AppDatabase db) async {
     ]);
   }
 
+  final expensesSheet = sheet('المصروفات', [
+    'التاريخ',
+    'البند',
+    'المبلغ',
+    'ملاحظة',
+  ]);
+  for (final e in await (db.select(
+    db.expenses,
+  )..orderBy([(e) => OrderingTerm.asc(e.date)])).get()) {
+    expensesSheet.appendRow([
+      DateCellValue.fromDateTime(e.date),
+      t(e.category),
+      money(e.amountPiasters),
+      t(e.note),
+    ]);
+  }
+
   final stockSheet = sheet('المخزون', [
     'الصنف',
     'الوحدة',

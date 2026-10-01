@@ -393,4 +393,35 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 1));
   });
+
+  testWidgets('record an expense from the home screen tools', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final db = AppDatabase(NativeDatabase.memory());
+    router.go('/');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db)],
+        child: const MetalLedgerApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('المصروفات'));
+    await tester.pumpAndSettle();
+    expect(find.text('لا توجد مصروفات في هذا الشهر'), findsOneWidget);
+    await tester.tap(find.text('مصروف جديد'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تحميل وتنزيل'));
+    await tester.enterText(find.widgetWithText(TextFormField, 'المبلغ'), '250');
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('تحميل وتنزيل'), findsOneWidget);
+    expect(find.text('250 ج.م'), findsNWidgets(2)); // the row and the total
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
 }

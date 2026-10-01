@@ -399,6 +399,29 @@ void main() {
     expect((angle.stock, angle.unit, angle.lastSale), (40.0, 'قطعة', null));
   });
 
+  test('expenses are listed per month, newest first', () async {
+    for (final (day, amount) in [(1, 100), (15, 200), (31, 300)]) {
+      await db.addExpense(
+        ExpensesCompanion.insert(
+          date: DateTime(2026, 10, day),
+          category: 'نقل',
+          amountPiasters: amount,
+        ),
+      );
+    }
+    await db.addExpense(
+      ExpensesCompanion.insert(
+        date: DateTime(2026, 11, 1),
+        category: 'إيجار',
+        amountPiasters: 999,
+      ),
+    );
+    final october = await db
+        .watchExpenses(DateTime(2026, 10), DateTime(2026, 11))
+        .first;
+    expect(october.map((e) => e.amountPiasters), [300, 200, 100]);
+  });
+
   test('excel report has the four Arabic sheets', () async {
     final party = await addParty('الحاج محمود');
     await addOrder(party, OrderKind.sale, downPayment: 1000);
@@ -412,6 +435,7 @@ void main() {
         'الدفعات',
         'العملاء والموردين',
         'المخزون',
+        'المصروفات',
       ]),
     );
     expect(excel.tables['الطلبات']!.maxRows, 2);
