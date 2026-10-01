@@ -33,7 +33,7 @@ to him versus effort.
 | 7 | ✅ **Profit per order and per month** — done in v1.7 (average purchase cost) (sell price − purchase cost) | Shows which items and clients actually make money. |
 | 8 | ✅ **Monthly report** — done in v1.7 (sales, purchases, collections, top clients/items) shared as PDF | End-of-month review without spreadsheets. |
 | 9 | ✅ **Expenses** — done in v1.6 (transport, loading, workshop rent) | Profit then reflects real costs. |
-| 10 | **Weight-based pricing**: price per kg/ton, with the weight computed from dimensions for sheets, pipes and angles | Very common in metal trading, and it removes calculator errors. |
+| 10 | ✅ **Weight-based pricing** — done in v1.8 (calculator on each order line): price per kg/ton, with the weight computed from dimensions for sheets, pipes and angles | Very common in metal trading, and it removes calculator errors. |
 
 ### Phase 4 — when the business grows
 

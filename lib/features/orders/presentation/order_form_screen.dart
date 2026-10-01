@@ -11,6 +11,7 @@ import '../../items/data/items_providers.dart';
 import '../../items/presentation/item_name_field.dart';
 import '../../items/presentation/item_price_hint.dart';
 import '../../parties/data/parties_providers.dart';
+import '../../weight/presentation/weight_calculator_dialog.dart';
 
 /// The data needed to edit an existing order.
 typedef OrderDraft = ({Order order, List<OrderItem> items});
@@ -377,6 +378,21 @@ class _ItemFields extends StatelessWidget {
     onChanged();
   }
 
+  /// Fills the quantity with a calculated weight: in tons if the line is
+  /// already priced per ton, otherwise in kilos.
+  Future<void> _useWeight(BuildContext context) async {
+    final result = await showWeightCalculator(context);
+    if (result == null) return;
+    final inTons = controllers.unit.text.trim() == 'طن';
+    final qty = inTons ? result.kg / 1000 : result.kg;
+    controllers.quantity.text = formatQuantity(qty);
+    if (!inTons) controllers.unit.text = 'كيلو';
+    if (controllers.name.text.trim().isEmpty) {
+      controllers.name.text = result.description;
+    }
+    onChanged();
+  }
+
   String? _requiredNumber(String? v) =>
       parseNumber(v ?? '') == null ? 'مطلوب' : null;
 
@@ -399,6 +415,11 @@ class _ItemFields extends StatelessWidget {
                     kind: kind,
                     onSelected: _fillFrom,
                   ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.scale_outlined),
+                  tooltip: 'حاسبة الوزن',
+                  onPressed: () => _useWeight(context),
                 ),
                 if (onRemove != null)
                   IconButton(
