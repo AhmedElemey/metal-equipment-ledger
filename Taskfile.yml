@@ -1,0 +1,105 @@
+# =============================================================================
+# go-task (Task) — https://taskfile.dev
+# =============================================================================
+#
+# Install:
+#   macOS:   brew install go-task
+#   Linux:   sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
+#   Windows: choco install go-task
+#   Other:   https://taskfile.dev/installation/
+#
+# Flutter commands go through FVM so they use the SDK pinned in .fvmrc
+# (Flutter 3.47.5 / Dart 3.13.4), not the older Flutter on PATH.
+# =============================================================================
+
+version: "3"
+
+tasks:
+  pub:get:
+    desc: Install packages with the Flutter SDK pinned in .fvmrc
+    cmds:
+      - fvm flutter pub get
+
+  run:
+    desc: Run the app on a connected device
+    cmds:
+      - fvm flutter run
+
+  analyze:
+    desc: Run the analyzer
+    cmds:
+      - fvm flutter analyze
+
+  test:
+    desc: Run tests
+    cmds:
+      - fvm flutter test
+
+  version:bump:
+    desc: Increment the build number (the +N in pubspec.yaml's version line)
+    cmds:
+      - |
+        VERSION_LINE=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+        APP_VERSION="${VERSION_LINE%%+*}"
+        BUILD_NUMBER="${VERSION_LINE##*+}"
+        NEW_BUILD_NUMBER=$((BUILD_NUMBER + 1))
+        NEW_VERSION_LINE="${APP_VERSION}+${NEW_BUILD_NUMBER}"
+        perl -pi -e "s/^version: .*/version: ${NEW_VERSION_LINE}/" pubspec.yaml
+        echo "Bumped version: ${VERSION_LINE} -> ${NEW_VERSION_LINE}"
+
+  build:
+    desc: Build a release APK (com.ledger.metal_ledger)
+    cmds:
+      - fvm flutter build apk --release
+      - task: _apk-summary
+
+  _apk-summary:
+    internal: true
+    desc: Copy the just-built APK to a version-stamped filename and print a summary
+    vars:
+      FULL_VERSION:
+        sh: grep '^version:' pubspec.yaml | awk '{print $2}'
+    cmds:
+      - |
+        SRC="build/app/outputs/flutter-apk/app-release.apk"
+        DEST="build/app/outputs/flutter-apk/metal-ledger-v{{.FULL_VERSION}}.apk"
+        if [ ! -f "$SRC" ]; then
+          echo "Expected APK not found at $SRC" >&2
+          exit 1
+        fi
+        cp "$SRC" "$DEST"
+        echo ""
+        echo "================================================"
+        echo " Metal ledger APK build summary"
+        echo "================================================"
+        echo " App ID:   com.ledger.metal_ledger"
+        echo " Version:  {{.FULL_VERSION}}"
+        echo " APK path: $DEST"
+        echo "================================================"
+
+  signing:report:
+    desc: Print debug + release SHA-1/SHA-256 (add both to the Google OAuth Android client)
+    cmds:
+      - cd android && ./gradlew :app:signingReport
+
+  generate:
+    desc: Regenerate Drift code after table changes in app_database.dart
+    cmds:
+      - fvm dart run build_runner build --delete-conflicting-outputs
+
+  generate:watch:
+    desc: Watch and regenerate Drift code
+    cmds:
+      - fvm dart run build_runner watch --delete-conflicting-outputs
+
+  clean:
+    desc: Clean build output and reinstall packages
+    cmds:
+      - fvm flutter clean
+      - fvm flutter pub get
+
+  icons:
+    desc: Regenerate launcher icons from assets/icon
+    cmds:
+      - fvm flutter pub get
+      - fvm dart run flutter_launcher_icons
