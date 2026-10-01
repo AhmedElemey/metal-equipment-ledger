@@ -37,7 +37,9 @@ class OrderTile extends StatelessWidget {
               formatMoney(summary.totalPiasters),
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
-            if (remaining > 0 && order.status != OrderStatus.cancelled)
+            if (remaining > 0 &&
+                order.status != OrderStatus.cancelled &&
+                order.status != OrderStatus.quotation)
               Text(
                 'متبقي ${formatMoney(remaining)}',
                 style: const TextStyle(color: AppColors.danger, fontSize: 12),

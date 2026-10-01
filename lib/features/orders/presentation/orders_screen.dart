@@ -15,45 +15,66 @@ class OrdersScreen extends ConsumerStatefulWidget {
   ConsumerState<OrdersScreen> createState() => _OrdersScreenState();
 }
 
+enum _Filter { all, sale, purchase, quotations }
+
 class _OrdersScreenState extends ConsumerState<OrdersScreen> {
-  OrderKind? _kind;
+  _Filter _filter = _Filter.all;
 
   @override
   Widget build(BuildContext context) {
     final orders = ref.watch(
-      ordersProvider((partyId: null, kind: _kind, limit: null)),
+      ordersProvider((
+        partyId: null,
+        kind: switch (_filter) {
+          _Filter.sale => OrderKind.sale,
+          _Filter.purchase => OrderKind.purchase,
+          _ => null,
+        },
+        quotations: _filter == _Filter.quotations,
+        limit: null,
+      )),
     );
     return Scaffold(
       appBar: AppBar(title: const Text('طلباتي')),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/orders/new'),
+        onPressed: () => context.push(
+          _filter == _Filter.quotations
+              ? '/orders/new?quotation=1'
+              : '/orders/new',
+        ),
         icon: const Icon(Icons.add),
-        label: const Text('طلب جديد'),
+        label: Text(
+          _filter == _Filter.quotations ? 'عرض سعر جديد' : 'طلب جديد',
+        ),
       ),
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.all(12),
-            child: SegmentedButton<OrderKind?>(
+            child: SegmentedButton<_Filter>(
+              showSelectedIcon: false,
               segments: const [
-                ButtonSegment(value: null, label: Text('الكل')),
-                ButtonSegment(value: OrderKind.sale, label: Text('مبيعات')),
+                ButtonSegment(value: _Filter.all, label: Text('الكل')),
+                ButtonSegment(value: _Filter.sale, label: Text('بيع')),
+                ButtonSegment(value: _Filter.purchase, label: Text('شراء')),
                 ButtonSegment(
-                  value: OrderKind.purchase,
-                  label: Text('مشتريات'),
+                  value: _Filter.quotations,
+                  label: Text('عروض أسعار'),
                 ),
               ],
-              selected: {_kind},
-              onSelectionChanged: (s) => setState(() => _kind = s.first),
+              selected: {_filter},
+              onSelectionChanged: (s) => setState(() => _filter = s.first),
             ),
           ),
           Expanded(
             child: AsyncValueView(
               value: orders,
               data: (list) => list.isEmpty
-                  ? const EmptyState(
+                  ? EmptyState(
                       icon: Icons.receipt_long_outlined,
-                      message: 'لا توجد طلبات بعد.',
+                      message: _filter == _Filter.quotations
+                          ? 'لا توجد عروض أسعار.'
+                          : 'لا توجد طلبات بعد.',
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.only(bottom: 88),

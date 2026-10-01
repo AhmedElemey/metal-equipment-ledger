@@ -13,10 +13,16 @@ import '../../parties/data/parties_providers.dart';
 typedef OrderDraft = ({Order order, List<OrderItem> items});
 
 class OrderFormScreen extends ConsumerStatefulWidget {
-  const OrderFormScreen({super.key, this.existing, this.initialPartyId});
+  const OrderFormScreen({
+    super.key,
+    this.existing,
+    this.initialPartyId,
+    this.initialQuotation = false,
+  });
 
   final OrderDraft? existing;
   final int? initialPartyId;
+  final bool initialQuotation;
 
   @override
   ConsumerState<OrderFormScreen> createState() => _OrderFormScreenState();
@@ -56,6 +62,8 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
   final _formKey = GlobalKey<FormState>();
   late OrderKind _kind = widget.existing?.order.kind ?? OrderKind.sale;
   late int? _partyId = widget.existing?.order.partyId ?? widget.initialPartyId;
+  // Only chosen for new orders; converting a quotation is its own action.
+  late bool _quotation = widget.initialQuotation;
   late DateTime _date = widget.existing?.order.date ?? DateTime.now();
   late final _items = widget.existing == null
       ? [_ItemControllers()]
@@ -75,6 +83,10 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
     _notes.dispose();
     super.dispose();
   }
+
+  bool get _isQuotation => widget.existing == null
+      ? _quotation && _kind == OrderKind.sale
+      : widget.existing!.order.status == OrderStatus.quotation;
 
   int get _total => _items.fold(0, (sum, i) => sum + i.lineTotal);
 
@@ -113,7 +125,10 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
           id: existing == null ? const Value.absent() : Value(existing.id),
           partyId: Value(_partyId!),
           kind: Value(_kind),
-          status: Value(existing?.status ?? OrderStatus.pending),
+          status: Value(
+            existing?.status ??
+                (_isQuotation ? OrderStatus.quotation : OrderStatus.pending),
+          ),
           date: Value(_date),
           notes: Value(_notes.text.trim().isEmpty ? null : _notes.text.trim()),
           createdAt: existing == null
@@ -132,7 +147,7 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
               unitPricePiasters: parseMoneyToPiasters(i.price.text)!,
             ),
         ],
-        downPayment: existing == null
+        downPayment: existing == null && !_isQuotation
             ? parseMoneyToPiasters(_paid.text) ?? 0
             : 0,
       );
@@ -155,10 +170,18 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
     final parties = ref.watch(partiesProvider('')).value ?? const <Party>[];
     final total = _total;
     final isNew = widget.existing == null;
+    final quotation = _isQuotation;
+    // A down payment only makes sense on a real new order.
+    final takesPayment = isNew && !quotation;
     final paid = isNew ? parseMoneyToPiasters(_paid.text) ?? 0 : 0;
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.existing == null ? 'طلب جديد' : 'تعديل الطلب'),
+        title: Text(switch ((isNew, quotation)) {
+          (true, true) => 'عرض سعر جديد',
+          (true, false) => 'طلب جديد',
+          (false, true) => 'تعديل عرض السعر',
+          (false, false) => 'تعديل الطلب',
+        }),
       ),
       body: Form(
         key: _formKey,
@@ -181,6 +204,14 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
                   ? (s) => setState(() => _kind = s.first)
                   : null,
             ),
+            if (isNew && _kind == OrderKind.sale)
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('عرض سعر فقط'),
+                subtitle: const Text('لا يُحسب على العميل حتى يتم تأكيده'),
+                value: _quotation,
+                onChanged: (v) => setState(() => _quotation = v),
+              ),
             const SizedBox(height: 16),
             DropdownMenu<int>(
               // Re-key so the menu shows the party once the list has loaded.
@@ -226,7 +257,7 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
               label: const Text('إضافة صنف'),
             ),
             const Divider(),
-            if (isNew)
+            if (takesPayment)
               TextFormField(
                 controller: _paid,
                 decoration: InputDecoration(
@@ -260,7 +291,7 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
                 child: Column(
                   children: [
                     TotalRow('الإجمالي', formatMoney(total), bold: true),
-                    if (isNew) ...[
+                    if (takesPayment) ...[
                       TotalRow('المدفوع', formatMoney(paid)),
                       TotalRow(
                         'المتبقي',
@@ -276,7 +307,7 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
             FilledButton.icon(
               onPressed: _saving ? null : _save,
               icon: const Icon(Icons.save),
-              label: const Text('حفظ الطلب'),
+              label: Text(quotation ? 'حفظ عرض السعر' : 'حفظ الطلب'),
               style: FilledButton.styleFrom(minimumSize: const Size(0, 52)),
             ),
           ],

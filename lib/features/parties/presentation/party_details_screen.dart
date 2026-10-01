@@ -105,7 +105,14 @@ class _PartyBody extends ConsumerWidget {
     final balance = ref.watch(partyBalanceProvider(party.id)).value;
     final orders =
         ref
-            .watch(ordersProvider((partyId: party.id, kind: null, limit: null)))
+            .watch(
+              ordersProvider((
+                partyId: party.id,
+                kind: null,
+                quotations: null,
+                limit: null,
+              )),
+            )
             .value ??
         const <OrderSummary>[];
     final phone = party.phone;

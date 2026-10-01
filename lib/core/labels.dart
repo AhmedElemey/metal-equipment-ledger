@@ -29,6 +29,7 @@ extension OrderStatusLabel on OrderStatus {
     OrderStatus.inProgress => 'قيد التنفيذ',
     OrderStatus.delivered => 'تم التسليم',
     OrderStatus.cancelled => 'ملغي',
+    OrderStatus.quotation => 'عرض سعر',
   };
 
   Color get color => switch (this) {
@@ -36,5 +37,6 @@ extension OrderStatusLabel on OrderStatus {
     OrderStatus.inProgress => AppColors.purchase,
     OrderStatus.delivered => AppColors.sale,
     OrderStatus.cancelled => Colors.grey,
+    OrderStatus.quotation => Colors.purple,
   };
 }

@@ -11,7 +11,10 @@ enum PartyKind { buyer, seller, both }
 /// بيع (للعميل) أو شراء (من المورد).
 enum OrderKind { sale, purchase }
 
-enum OrderStatus { pending, inProgress, delivered, cancelled }
+/// Stored by index: only ever append new values.
+/// A [quotation] (عرض سعر) is a sale not yet agreed — like [cancelled], it
+/// never counts towards balances, totals or collections.
+enum OrderStatus { pending, inProgress, delivered, cancelled, quotation }
 
 /// [received]: money from the party to us (settles sales).
 /// [paid]: money from us to the party (settles purchases).
@@ -188,6 +191,10 @@ class StatementEntry {
 const _sale = 0; // OrderKind.sale.index
 const _received = 0; // PaymentDirection.received.index
 const _cancelled = 3; // OrderStatus.cancelled.index
+const _quotation = 4; // OrderStatus.quotation.index
+
+/// Orders that are real business: not cancelled and not a quotation.
+const _counts = 'o.status NOT IN ($_cancelled, $_quotation)';
 
 const _orderTotalSql =
     'COALESCE((SELECT SUM(CAST(ROUND(i.quantity * i.unit_price_piasters) AS INTEGER)) '
@@ -202,7 +209,7 @@ const _orderPaidSql =
 const _partyBalanceSql =
     '(COALESCE((SELECT SUM(CASE WHEN o.kind = $_sale THEN $_orderTotalSql '
     'ELSE -$_orderTotalSql END) FROM orders o '
-    'WHERE o.party_id = p.id AND o.status != $_cancelled), 0) '
+    'WHERE o.party_id = p.id AND $_counts), 0) '
     '- COALESCE((SELECT SUM(CASE WHEN pay.direction = $_received '
     'THEN pay.amount_piasters ELSE -pay.amount_piasters END) '
     'FROM payments pay WHERE pay.party_id = p.id), 0))';
@@ -308,7 +315,7 @@ class AppDatabase extends _$AppDatabase {
       '(SELECT MAX(pay.date) FROM payments pay WHERE pay.party_id = p.id '
       'AND pay.direction = $_received) AS last_payment, '
       '(SELECT MIN(o.date) FROM orders o WHERE o.party_id = p.id '
-      'AND o.kind = $_sale AND o.status != $_cancelled) AS first_sale '
+      'AND o.kind = $_sale AND $_counts) AS first_sale '
       'FROM parties p) WHERE balance > 0 ORDER BY balance DESC',
       readsFrom: {parties, orders, orderItems, payments},
     ).watch().map(
@@ -331,7 +338,7 @@ class AppDatabase extends _$AppDatabase {
       'SELECT 0 AS is_payment, o.id AS ref_id, o.kind AS kind, '
       'o.date AS date, o.created_at AS created_at, NULL AS order_id, '
       '$_orderTotalSql AS amount, o.notes AS note '
-      'FROM orders o WHERE o.party_id = ?1 AND o.status != $_cancelled '
+      'FROM orders o WHERE o.party_id = ?1 AND $_counts '
       'UNION ALL '
       'SELECT 1, pay.id, pay.direction, pay.date, pay.created_at, '
       'pay.order_id, pay.amount_piasters, pay.note '
@@ -370,13 +377,19 @@ class AppDatabase extends _$AppDatabase {
 
   // ----------------------------------------------------------------- orders
 
+  /// [quotations]: null = everything, true = only quotations,
+  /// false = only real orders.
   Stream<List<OrderSummary>> watchOrderSummaries({
     int? partyId,
     OrderKind? kind,
+    bool? quotations,
     int? limit,
   }) {
     final where = <String>[];
     final vars = <Variable>[];
+    if (quotations != null) {
+      where.add('o.status ${quotations ? '=' : '!='} $_quotation');
+    }
     if (partyId != null) {
       where.add('o.party_id = ?');
       vars.add(Variable.withInt(partyId));
@@ -461,6 +474,15 @@ class AppDatabase extends _$AppDatabase {
         OrdersCompanion(status: Value(status)),
       );
 
+  /// The client accepted the quotation: it becomes a sale dated today.
+  Future<void> convertQuotation(int id, DateTime today) =>
+      (update(orders)..where((o) => o.id.equals(id))).write(
+        OrdersCompanion(
+          status: const Value(OrderStatus.pending),
+          date: Value(today),
+        ),
+      );
+
   Future<void> deleteOrder(int id) =>
       (delete(orders)..where((o) => o.id.equals(id))).go();
 
@@ -487,10 +509,10 @@ class AppDatabase extends _$AppDatabase {
     return customSelect(
       'SELECT '
       'COALESCE((SELECT SUM($_orderTotalSql) FROM orders o WHERE o.kind = $_sale '
-      'AND o.status != $_cancelled AND o.date >= ?1 AND o.date < ?2), 0) AS today_sales, '
+      'AND $_counts AND o.date >= ?1 AND o.date < ?2), 0) AS today_sales, '
       'COALESCE((SELECT SUM($_orderTotalSql) FROM orders o WHERE o.kind != $_sale '
-      'AND o.status != $_cancelled AND o.date >= ?1 AND o.date < ?2), 0) AS today_purchases, '
-      'COALESCE((SELECT COUNT(*) FROM orders o WHERE o.status != $_cancelled '
+      'AND $_counts AND o.date >= ?1 AND o.date < ?2), 0) AS today_purchases, '
+      'COALESCE((SELECT COUNT(*) FROM orders o WHERE $_counts '
       'AND o.status != $delivered), 0) AS open_orders, '
       'COALESCE(SUM(MAX(b.balance, 0)), 0) AS receivables, '
       'COALESCE(SUM(MAX(-b.balance, 0)), 0) AS payables, '

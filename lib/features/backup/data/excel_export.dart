@@ -48,7 +48,8 @@ Future<List<int>> buildExcelReport(AppDatabase db) async {
       t(o.status.label),
       money(s.totalPiasters),
       money(s.paidPiasters),
-      money(s.remainingPiasters),
+      // A quotation isn't owed by anyone yet.
+      money(o.status == OrderStatus.quotation ? 0 : s.remainingPiasters),
       t(o.notes),
     ]);
   }

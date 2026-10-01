@@ -23,6 +23,7 @@ final router = GoRouter(
       path: '/orders/new',
       builder: (_, s) => OrderFormScreen(
         initialPartyId: int.tryParse(s.uri.queryParameters['partyId'] ?? ''),
+        initialQuotation: s.uri.queryParameters['quotation'] == '1',
       ),
     ),
     GoRoute(

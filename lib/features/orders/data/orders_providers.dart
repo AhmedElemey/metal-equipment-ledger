@@ -3,7 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/database/database_provider.dart';
 
-typedef OrdersFilter = ({int? partyId, OrderKind? kind, int? limit});
+typedef OrdersFilter = ({
+  int? partyId,
+  OrderKind? kind,
+  bool? quotations,
+  int? limit,
+});
 
 final ordersProvider = StreamProvider.autoDispose
     .family<List<OrderSummary>, OrdersFilter>(
@@ -12,6 +17,7 @@ final ordersProvider = StreamProvider.autoDispose
           .watchOrderSummaries(
             partyId: f.partyId,
             kind: f.kind,
+            quotations: f.quotations,
             limit: f.limit,
           ),
     );

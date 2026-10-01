@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/database_provider.dart';
 import '../../../core/formatters.dart';
 import '../../../core/theme.dart';
+import '../../business/presentation/business_info_card.dart';
 import '../data/backup_schedule.dart';
 import '../data/drive_backup.dart';
 
@@ -52,10 +53,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final connected = status?.connected ?? false;
     final lastAt = status?.lastAt;
     return Scaffold(
-      appBar: AppBar(title: const Text('الإعدادات والنسخ الاحتياطي')),
+      appBar: AppBar(title: const Text('الإعدادات')),
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
+          const BusinessInfoCard(),
+          const SizedBox(height: 12),
           Card(
             margin: EdgeInsets.zero,
             child: Padding(

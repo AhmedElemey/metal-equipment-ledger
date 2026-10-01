@@ -211,6 +211,39 @@ void main() {
     expect(await db.watchPartyBalance(party).first, -5000);
   });
 
+  test('quotations never count until converted', () async {
+    final party = await addParty('عميل');
+    final id = await addOrder(
+      party,
+      OrderKind.sale,
+      status: OrderStatus.quotation,
+      date: DateTime(2026, 9, 1),
+    );
+    final now = DateTime(2026, 10, 1, 12);
+
+    expect(await db.watchPartyBalance(party).first, 0);
+    expect(await db.watchStatement(party).first, isEmpty);
+    expect(await db.watchDebtors().first, isEmpty);
+    final d = await db.watchDashboard(now).first;
+    expect((d.receivables, d.openOrders), (0, 0));
+    expect(
+      (await db.watchOrderSummaries(quotations: true).first).map(
+        (o) => o.order.id,
+      ),
+      [id],
+    );
+    expect(await db.watchOrderSummaries(quotations: false).first, isEmpty);
+
+    await db.convertQuotation(id, now);
+
+    final order = await db.getOrder(id);
+    expect(order.status, OrderStatus.pending);
+    expect(order.date, now);
+    expect(await db.watchPartyBalance(party).first, orderTotal);
+    expect((await db.watchDashboard(now).first).todaySales, orderTotal);
+    expect(await db.watchOrderSummaries(quotations: true).first, isEmpty);
+  });
+
   test('excel report has the four Arabic sheets', () async {
     final party = await addParty('الحاج محمود');
     await addOrder(party, OrderKind.sale, downPayment: 1000);

@@ -23,7 +23,14 @@ class DashboardScreen extends ConsumerWidget {
     final stats = ref.watch(dashboardProvider).value;
     final recent =
         ref
-            .watch(ordersProvider((partyId: null, kind: null, limit: 10)))
+            .watch(
+              ordersProvider((
+                partyId: null,
+                kind: null,
+                quotations: false,
+                limit: 10,
+              )),
+            )
             .value ??
         const <OrderSummary>[];
     return Scaffold(

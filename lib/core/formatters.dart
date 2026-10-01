@@ -1,16 +1,24 @@
 import 'package:intl/intl.dart';
 
-final _money = NumberFormat('#,##0.##', 'ar');
+final _money = NumberFormat('#,##0', 'ar');
+final _moneyWithPiasters = NumberFormat('#,##0.00', 'ar');
 final _qty = NumberFormat('#,##0.###', 'ar');
 final _date = DateFormat('d MMMM y', 'ar');
+final _shortDate = DateFormat('d/M/y', 'ar');
 final _dateTime = DateFormat('d MMM y - h:mm a', 'ar');
 
-/// 150050 piasters → "1,500.5 ج.م"
-String formatMoney(int piasters) => '${_money.format(piasters / 100)} ج.م';
+/// 150000 → "1,500 ج.م", 150050 → "1,500.50 ج.م"
+String formatMoney(int piasters) {
+  final f = piasters % 100 == 0 ? _money : _moneyWithPiasters;
+  return '${f.format(piasters / 100)} ج.م';
+}
 
 String formatQuantity(double qty) => _qty.format(qty);
 
 String formatDate(DateTime d) => _date.format(d);
+
+/// 1/10/2026 — used in PDFs, where month names break the text layout.
+String formatShortDate(DateTime d) => _shortDate.format(d);
 
 String formatDateTime(DateTime d) => _dateTime.format(d);
 

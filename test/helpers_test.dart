@@ -55,6 +55,12 @@ void main() {
     expect(daysAgo(DateTime(2026, 9, 10), now), 'منذ 30 يوم');
   });
 
+  test('formatMoney shows piasters only when present', () {
+    expect(formatMoney(150000), '1,500 ج.م');
+    expect(formatMoney(15050), '150.50 ج.م');
+    expect(formatMoney(-2500), endsWith('-25 ج.م'));
+  });
+
   test('balanceLabel says who owes whom', () {
     expect(balanceLabel(150000), startsWith('عليه 1,500'));
     expect(balanceLabel(-2500), startsWith('له 25'));

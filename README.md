@@ -11,6 +11,7 @@ Every evening the data is backed up to Google Drive.
 |---|---|
 | **الرئيسية** | Today's sales and purchases, what clients owe us, what we owe suppliers, open orders, latest orders |
 | **طلباتي** | Sale and purchase orders with line items (qty × unit × price), status (جديد / قيد التنفيذ / تم التسليم / ملغي), optional down payment, dated payments per order, send the order to the client on WhatsApp |
+| **فواتير وعروض أسعار PDF** | Any order can be shared as a PDF invoice (A4, Arabic, with the business name, phone and address set in Settings). A quotation (عرض سعر) is a sale that isn't counted in any balance until one tap converts it into a sale invoice dated today. |
 | **كشف حساب** | Per client/supplier: every order and payment with a running balance (عليه / له), record payments on account, send the statement on WhatsApp |
 | **التحصيل** | Everyone who owes us, biggest first, with the time since they last paid, a "متأخر" (overdue) flag after 30 days without payment, a one-tap polite WhatsApp reminder, and when they were last reminded |
 | **العملاء** | Clients and suppliers (or both), search by name or phone, one-tap call or WhatsApp, balance, full order history |

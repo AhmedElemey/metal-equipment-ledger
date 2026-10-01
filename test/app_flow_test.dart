@@ -115,4 +115,82 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 1));
   });
+
+  testWidgets('a quotation is created, then converted to a sale', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final db = AppDatabase(NativeDatabase.memory());
+    final client = await tester.runAsync(
+      () => db.saveParty(
+        PartiesCompanion.insert(name: 'ورشة النور', kind: PartyKind.buyer),
+      ),
+    );
+    router.go('/orders');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db)],
+        child: const MetalLedgerApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('عروض أسعار'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('عرض سعر جديد'));
+    await tester.pumpAndSettle();
+    expect(find.text('عرض سعر جديد'), findsOneWidget); // form title
+    expect(
+      tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
+      isTrue,
+    );
+
+    // Pick the client from the dropdown.
+    await tester.tap(find.byType(DropdownMenu<int>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ورشة النور').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'اسم الصنف *'),
+      'زاوية',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'سعر الوحدة'),
+      '500',
+    );
+    expect(find.textContaining('دفعة مقدمة'), findsNothing);
+    await tester.scrollUntilVisible(
+      find.text('حفظ عرض السعر'),
+      300,
+      scrollable: find
+          .descendant(of: find.byType(Form), matching: find.byType(Scrollable))
+          .first,
+    );
+    await tester.tap(find.text('حفظ عرض السعر'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('عرض سعر رقم 1'), findsOneWidget);
+    expect(find.text('المتبقي'), findsNothing);
+    final before = await tester.runAsync(
+      () => db.watchPartyBalance(client!).first,
+    );
+    expect(before, 0);
+
+    await tester.tap(find.text('تحويل لفاتورة بيع'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تحويل'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('طلب رقم 1'), findsOneWidget);
+    expect(find.text('تسجيل دفعة'), findsOneWidget);
+    final after = await tester.runAsync(
+      () => db.watchPartyBalance(client!).first,
+    );
+    expect(after, 50000);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
 }
