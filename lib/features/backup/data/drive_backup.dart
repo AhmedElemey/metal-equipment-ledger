@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/database/app_database.dart';
+import '../../photos/data/photos.dart';
 import '../../voice_notes/data/voice_notes_providers.dart';
 import 'excel_export.dart';
 
@@ -33,12 +34,13 @@ typedef DriveBackupFile = ({String id, DateTime modifiedAt});
 /// (from any install with the same OAuth client — so a new phone finds the
 /// old phone's backup), needs no Google verification, and can't touch the
 /// user's other files. The same files are updated every day; Drive keeps
-/// their older revisions, so earlier days stay recoverable. Voice notes are
-/// uploaded once each into a sub-folder (they never change).
+/// their older revisions, so earlier days stay recoverable. Voice notes and
+/// order photos are uploaded once each into sub-folders (they never change).
 abstract final class DriveBackup {
   static const _scopes = [drive.DriveApi.driveFileScope];
   static const folderName = 'دفتر المعدات - نسخ احتياطية';
   static const voiceFolderName = 'ملاحظات صوتية';
+  static const photosFolderName = 'صور الطلبات';
   static const excelName = 'دفتر المعدات - البيانات.xlsx';
   static const dbName = 'metal_ledger_backup.sqlite';
   static const _folderMime = 'application/vnd.google-apps.folder';
@@ -46,6 +48,7 @@ abstract final class DriveBackup {
   static const _kConnected = 'backup.connected';
   static const _kFolderId = 'backup.folderId';
   static const _kVoiceFolderId = 'backup.voiceFolderId';
+  static const _kPhotosFolderId = 'backup.photosFolderId';
   static const _kExcelId = 'backup.excelId';
   static const _kDbId = 'backup.dbId';
   static const lastBackupKey = 'backup.lastAt';
@@ -79,6 +82,7 @@ abstract final class DriveBackup {
       _kConnected,
       _kFolderId,
       _kVoiceFolderId,
+      _kPhotosFolderId,
       _kExcelId,
       _kDbId,
     ]) {
@@ -117,7 +121,7 @@ abstract final class DriveBackup {
         await tmp.delete();
       }
 
-      await _uploadVoiceNotes(api, folderId);
+      await _uploadMedia(api, folderId);
       await _prefs.setInt(lastBackupKey, DateTime.now().millisecondsSinceEpoch);
     });
   }
@@ -127,7 +131,8 @@ abstract final class DriveBackup {
       _withApi((api) async => _findDbBackup(api));
 
   /// Replaces all data on this phone with the latest Drive backup, then
-  /// downloads any voice notes it references. Returns the restored counts.
+  /// downloads the voice notes and photos it references. Returns the
+  /// restored counts.
   static Future<DataCounts> restore(AppDatabase db) {
     return _withApi((api) async {
       final backup = await _findDbBackup(api);
@@ -147,7 +152,7 @@ abstract final class DriveBackup {
         await _prefs.setString(_kDbId, backup.id);
         if (folderId != null) {
           await _prefs.setString(_kFolderId, folderId);
-          await _downloadVoiceNotes(api, db, folderId);
+          await _downloadMedia(api, db, folderId);
         }
         await _prefs.setInt(
           lastBackupKey,
@@ -262,64 +267,114 @@ abstract final class DriveBackup {
     await _prefs.setString(idKey, id);
   }
 
-  /// Uploads local voice notes that aren't on Drive yet.
-  static Future<void> _uploadVoiceNotes(
-    drive.DriveApi api,
-    String folderId,
-  ) async {
-    // Only finished recordings — not ".part" leftovers of a cut download.
-    final local = (await voiceNotesDir()).listSync().whereType<File>().where(
-      (f) => f.path.endsWith('.m4a'),
+  /// Uploads files from [local] (matching [extension]) that aren't in the
+  /// Drive sub-folder [folderName] yet. Files never change once written,
+  /// so a name match means it's already there.
+  static Future<void> _uploadFolder(
+    drive.DriveApi api, {
+    required String parentId,
+    required String idKey,
+    required String folderName,
+    required Directory local,
+    required String extension,
+    required String contentType,
+  }) async {
+    // Only finished files — not ".part" leftovers of a cut download.
+    final files = local.listSync().whereType<File>().where(
+      (f) => f.path.endsWith(extension),
     );
-    if (local.isEmpty) return;
-    final voiceFolder = await _folder(
-      api,
-      _kVoiceFolderId,
-      voiceFolderName,
-      folderId,
-    );
+    if (files.isEmpty) return;
+    final folder = await _folder(api, idKey, folderName, parentId);
     final remote = {
-      for (final f in await _search(api, "'$voiceFolder' in parents")) f.name,
+      for (final f in await _search(api, "'$folder' in parents")) f.name,
     };
-    for (final file in local) {
+    for (final file in files) {
       final name = p.basename(file.path);
       if (remote.contains(name)) continue;
       await api.files.create(
         drive.File()
           ..name = name
-          ..parents = [voiceFolder],
+          ..parents = [folder],
         uploadMedia: drive.Media(
           file.openRead(),
           file.lengthSync(),
-          contentType: 'audio/mp4',
+          contentType: contentType,
         ),
       );
     }
   }
 
-  /// Downloads the voice notes the restored data references but this phone
-  /// doesn't have.
-  static Future<void> _downloadVoiceNotes(
+  /// Downloads the [wanted] files from the Drive sub-folder [folderName]
+  /// that this phone doesn't have.
+  static Future<void> _downloadFolder(
+    drive.DriveApi api, {
+    required String parentId,
+    required String idKey,
+    required String folderName,
+    required Set<String> wanted,
+    required Future<File> Function(String name) target,
+  }) async {
+    if (wanted.isEmpty) return;
+    final folder = (await _search(
+      api,
+      "name = '$folderName' and mimeType = '$_folderMime' "
+      "and '$parentId' in parents",
+    )).firstOrNull?.id;
+    if (folder == null) return;
+    await _prefs.setString(idKey, folder);
+    for (final f in await _search(api, "'$folder' in parents")) {
+      if (!wanted.contains(f.name)) continue;
+      final file = await target(f.name!);
+      if (!file.existsSync()) await _download(api, f.id!, file);
+    }
+  }
+
+  static Future<void> _uploadMedia(drive.DriveApi api, String folderId) async {
+    await _uploadFolder(
+      api,
+      parentId: folderId,
+      idKey: _kVoiceFolderId,
+      folderName: voiceFolderName,
+      local: await voiceNotesDir(),
+      extension: '.m4a',
+      contentType: 'audio/mp4',
+    );
+    await _uploadFolder(
+      api,
+      parentId: folderId,
+      idKey: _kPhotosFolderId,
+      folderName: photosFolderName,
+      local: await photosDir(),
+      extension: '.jpg',
+      contentType: 'image/jpeg',
+    );
+  }
+
+  static Future<void> _downloadMedia(
     drive.DriveApi api,
     AppDatabase db,
     String folderId,
   ) async {
-    final wanted = {
-      for (final n in await db.select(db.voiceNotes).get()) n.fileName,
-    };
-    if (wanted.isEmpty) return;
-    final voiceFolder = (await _search(
+    await _downloadFolder(
       api,
-      "name = '$voiceFolderName' and mimeType = '$_folderMime' "
-      "and '$folderId' in parents",
-    )).firstOrNull?.id;
-    if (voiceFolder == null) return;
-    await _prefs.setString(_kVoiceFolderId, voiceFolder);
-    for (final f in await _search(api, "'$voiceFolder' in parents")) {
-      if (!wanted.contains(f.name)) continue;
-      final target = await voiceNoteFile(f.name!);
-      if (!target.existsSync()) await _download(api, f.id!, target);
-    }
+      parentId: folderId,
+      idKey: _kVoiceFolderId,
+      folderName: voiceFolderName,
+      wanted: {
+        for (final n in await db.select(db.voiceNotes).get()) n.fileName,
+      },
+      target: voiceNoteFile,
+    );
+    await _downloadFolder(
+      api,
+      parentId: folderId,
+      idKey: _kPhotosFolderId,
+      folderName: photosFolderName,
+      wanted: {
+        for (final ph in await db.select(db.orderPhotos).get()) ph.fileName,
+      },
+      target: photoFile,
+    );
   }
 
   static Future<void> _download(

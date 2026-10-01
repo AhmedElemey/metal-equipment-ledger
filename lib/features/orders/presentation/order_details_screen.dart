@@ -17,6 +17,8 @@ import '../../accounts/data/accounts_providers.dart';
 import '../../accounts/presentation/record_payment_dialog.dart';
 import '../../business/data/business_info.dart';
 import '../../parties/presentation/contact_launcher.dart';
+import '../../photos/data/photos.dart';
+import '../../photos/presentation/order_photos_section.dart';
 import '../../voice_notes/presentation/voice_notes_section.dart';
 import '../../../core/pdf.dart';
 import '../../reports/data/report_providers.dart';
@@ -64,7 +66,7 @@ class OrderDetailsScreen extends ConsumerWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('حذف الطلب؟'),
-        content: const Text('سيتم حذف الطلب وأصنافه نهائياً.'),
+        content: const Text('سيتم حذف الطلب وأصنافه وصوره نهائياً.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -80,7 +82,9 @@ class OrderDetailsScreen extends ConsumerWidget {
     if (ok != true || !context.mounted) return;
     // Leave first so this screen's stream never sees the missing row.
     context.pop();
-    await db.deleteOrder(orderId);
+    final photos = await db.watchOrderPhotos(orderId).first;
+    await db.deleteOrder(orderId); // photo rows cascade
+    await deletePhotoFiles(photos);
   }
 }
 
@@ -231,6 +235,7 @@ class _OrderBody extends ConsumerWidget {
             },
           ),
         ],
+        OrderPhotosSliver(orderId: order.id),
         VoiceNotesSliver(partyId: order.partyId, orderId: order.id),
         const SliverToBoxAdapter(child: SizedBox(height: 32)),
       ],

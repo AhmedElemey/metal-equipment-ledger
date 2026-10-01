@@ -137,6 +137,18 @@ class Cheques extends Table {
   TextColumn get note => text().nullable()();
 }
 
+/// Photos attached to an order (equipment condition, delivery receipt…).
+@TableIndex(name: 'order_photos_order', columns: {#orderId})
+class OrderPhotos extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get orderId =>
+      integer().references(Orders, #id, onDelete: KeyAction.cascade)();
+
+  /// File name only — the documents directory can move between installs.
+  TextColumn get fileName => text()();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+}
+
 /// Business costs not tied to an order: transport, loading, rent…
 class Expenses extends Table {
   IntColumn get id => integer().autoIncrement()();
@@ -393,6 +405,7 @@ const _partyBalanceSql =
     ItemSettings,
     Expenses,
     Cheques,
+    OrderPhotos,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -401,7 +414,7 @@ class AppDatabase extends _$AppDatabase {
   static const fileName = 'metal_ledger';
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -442,6 +455,10 @@ class AppDatabase extends _$AppDatabase {
       if (from < 6) {
         await m.createTable(cheques);
         await m.createIndex(chequesDue);
+      }
+      if (from < 7) {
+        await m.createTable(orderPhotos);
+        await m.createIndex(orderPhotosOrder);
       }
     },
     beforeOpen: (details) async {
@@ -877,6 +894,21 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  // ----------------------------------------------------------------- photos
+
+  Stream<List<OrderPhoto>> watchOrderPhotos(int orderId) =>
+      (select(orderPhotos)
+            ..where((p) => p.orderId.equals(orderId))
+            ..orderBy([(p) => OrderingTerm.asc(p.id)]))
+          .watch();
+
+  Future<int> addOrderPhoto(int orderId, String fileName) => into(
+    orderPhotos,
+  ).insert(OrderPhotosCompanion.insert(orderId: orderId, fileName: fileName));
+
+  Future<void> deleteOrderPhoto(int id) =>
+      (delete(orderPhotos)..where((p) => p.id.equals(id))).go();
+
   // ---------------------------------------------------------------- cheques
 
   /// Cheques with their party's name; pending ones by due date first.
@@ -1074,6 +1106,7 @@ class AppDatabase extends _$AppDatabase {
       itemSettings,
       expenses,
       cheques,
+      orderPhotos,
     ];
     await customStatement('ATTACH DATABASE ? AS backup', [backup.path]);
     try {

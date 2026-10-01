@@ -1,5 +1,9 @@
 import 'package:drift/drift.dart'
     show ApplyInterceptor, QueryExecutor, QueryInterceptor, Value;
+
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +13,8 @@ import 'package:metal_ledger/app.dart';
 import 'package:metal_ledger/core/database/app_database.dart';
 import 'package:metal_ledger/core/database/database_provider.dart';
 import 'package:metal_ledger/core/router.dart';
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
+import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
@@ -620,6 +626,79 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 1));
   });
+
+  testWidgets('order photos: strip, viewer and delete', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final docs = Directory.systemTemp.createTempSync('ledger_docs');
+    addTearDown(() => docs.deleteSync(recursive: true));
+    final realPaths = PathProviderPlatform.instance;
+    PathProviderPlatform.instance = _FakePathProvider(docs.path);
+    addTearDown(() => PathProviderPlatform.instance = realPaths);
+
+    final db = AppDatabase(NativeDatabase.memory());
+    final orderId = await tester.runAsync(() async {
+      final party = await db.saveParty(
+        PartiesCompanion.insert(name: 'عميل', kind: PartyKind.buyer),
+      );
+      final id = await db.saveOrder(
+        OrdersCompanion.insert(
+          partyId: party,
+          kind: OrderKind.sale,
+          date: DateTime(2026, 10, 1),
+        ),
+        [
+          OrderItemsCompanion.insert(
+            orderId: 0,
+            name: 'صاج',
+            quantity: 1,
+            unitPricePiasters: 100,
+          ),
+        ],
+      );
+      Directory('${docs.path}/order_photos').createSync();
+      File('${docs.path}/order_photos/photo_1.png').writeAsBytesSync(_tinyPng);
+      await db.addOrderPhoto(id, 'photo_1.png');
+      return id;
+    });
+    final photo = File('${docs.path}/order_photos/photo_1.png');
+
+    router.go('/orders/$orderId');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db)],
+        child: const MetalLedgerApp(),
+      ),
+    );
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('الصور (1)'), 200);
+    // The strip resolves the photos folder (real file I/O) once built.
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(Image), findsOneWidget);
+
+    await tester.tap(find.byType(Image));
+    await tester.pumpAndSettle();
+    expect(find.byType(InteractiveViewer), findsOneWidget);
+    await tester.tap(find.byTooltip('حذف'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('حذف').last);
+    await tester.pumpAndSettle();
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('الصور (0)'), findsOneWidget);
+    expect(photo.existsSync(), isFalse);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
 }
 
 class _SlowWrites extends QueryInterceptor {
@@ -633,3 +712,21 @@ class _SlowWrites extends QueryInterceptor {
     return executor.runInsert(statement, args);
   }
 }
+
+class _FakePathProvider extends PathProviderPlatform
+    with MockPlatformInterfaceMixin {
+  _FakePathProvider(this.root);
+
+  final String root;
+
+  @override
+  Future<String?> getApplicationDocumentsPath() async => root;
+
+  @override
+  Future<String?> getTemporaryPath() async => root;
+}
+
+/// A valid 1×1 PNG.
+final _tinyPng = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+);

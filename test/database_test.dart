@@ -571,6 +571,19 @@ void main() {
     expect(await db.select(db.cheques).get(), isEmpty);
   });
 
+  test('order photos are listed in order and go with their order', () async {
+    final party = await addParty('عميل');
+    final id = await addOrder(party, OrderKind.sale);
+    await db.addOrderPhoto(id, 'photo_1.jpg');
+    await db.addOrderPhoto(id, 'photo_2.jpg');
+    expect((await db.watchOrderPhotos(id).first).map((p) => p.fileName), [
+      'photo_1.jpg',
+      'photo_2.jpg',
+    ]);
+    await db.deleteOrder(id);
+    expect(await db.select(db.orderPhotos).get(), isEmpty);
+  });
+
   test('excel report has the four Arabic sheets', () async {
     final party = await addParty('الحاج محمود');
     await addOrder(party, OrderKind.sale, downPayment: 1000);

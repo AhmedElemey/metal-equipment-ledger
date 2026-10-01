@@ -3869,6 +3869,309 @@ class ChequesCompanion extends UpdateCompanion<Cheque> {
   }
 }
 
+class $OrderPhotosTable extends OrderPhotos
+    with TableInfo<$OrderPhotosTable, OrderPhoto> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $OrderPhotosTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _orderIdMeta = const VerificationMeta(
+    'orderId',
+  );
+  @override
+  late final GeneratedColumn<int> orderId = GeneratedColumn<int>(
+    'order_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES orders (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _fileNameMeta = const VerificationMeta(
+    'fileName',
+  );
+  @override
+  late final GeneratedColumn<String> fileName = GeneratedColumn<String>(
+    'file_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, orderId, fileName, createdAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'order_photos';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<OrderPhoto> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('order_id')) {
+      context.handle(
+        _orderIdMeta,
+        orderId.isAcceptableOrUnknown(data['order_id']!, _orderIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_orderIdMeta);
+    }
+    if (data.containsKey('file_name')) {
+      context.handle(
+        _fileNameMeta,
+        fileName.isAcceptableOrUnknown(data['file_name']!, _fileNameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_fileNameMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  OrderPhoto map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return OrderPhoto(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      orderId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}order_id'],
+      )!,
+      fileName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}file_name'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $OrderPhotosTable createAlias(String alias) {
+    return $OrderPhotosTable(attachedDatabase, alias);
+  }
+}
+
+class OrderPhoto extends DataClass implements Insertable<OrderPhoto> {
+  final int id;
+  final int orderId;
+
+  /// File name only — the documents directory can move between installs.
+  final String fileName;
+  final DateTime createdAt;
+  const OrderPhoto({
+    required this.id,
+    required this.orderId,
+    required this.fileName,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['order_id'] = Variable<int>(orderId);
+    map['file_name'] = Variable<String>(fileName);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  OrderPhotosCompanion toCompanion(bool nullToAbsent) {
+    return OrderPhotosCompanion(
+      id: Value(id),
+      orderId: Value(orderId),
+      fileName: Value(fileName),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory OrderPhoto.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return OrderPhoto(
+      id: serializer.fromJson<int>(json['id']),
+      orderId: serializer.fromJson<int>(json['orderId']),
+      fileName: serializer.fromJson<String>(json['fileName']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'orderId': serializer.toJson<int>(orderId),
+      'fileName': serializer.toJson<String>(fileName),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  OrderPhoto copyWith({
+    int? id,
+    int? orderId,
+    String? fileName,
+    DateTime? createdAt,
+  }) => OrderPhoto(
+    id: id ?? this.id,
+    orderId: orderId ?? this.orderId,
+    fileName: fileName ?? this.fileName,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  OrderPhoto copyWithCompanion(OrderPhotosCompanion data) {
+    return OrderPhoto(
+      id: data.id.present ? data.id.value : this.id,
+      orderId: data.orderId.present ? data.orderId.value : this.orderId,
+      fileName: data.fileName.present ? data.fileName.value : this.fileName,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OrderPhoto(')
+          ..write('id: $id, ')
+          ..write('orderId: $orderId, ')
+          ..write('fileName: $fileName, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, orderId, fileName, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is OrderPhoto &&
+          other.id == this.id &&
+          other.orderId == this.orderId &&
+          other.fileName == this.fileName &&
+          other.createdAt == this.createdAt);
+}
+
+class OrderPhotosCompanion extends UpdateCompanion<OrderPhoto> {
+  final Value<int> id;
+  final Value<int> orderId;
+  final Value<String> fileName;
+  final Value<DateTime> createdAt;
+  const OrderPhotosCompanion({
+    this.id = const Value.absent(),
+    this.orderId = const Value.absent(),
+    this.fileName = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  OrderPhotosCompanion.insert({
+    this.id = const Value.absent(),
+    required int orderId,
+    required String fileName,
+    this.createdAt = const Value.absent(),
+  }) : orderId = Value(orderId),
+       fileName = Value(fileName);
+  static Insertable<OrderPhoto> custom({
+    Expression<int>? id,
+    Expression<int>? orderId,
+    Expression<String>? fileName,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (orderId != null) 'order_id': orderId,
+      if (fileName != null) 'file_name': fileName,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  OrderPhotosCompanion copyWith({
+    Value<int>? id,
+    Value<int>? orderId,
+    Value<String>? fileName,
+    Value<DateTime>? createdAt,
+  }) {
+    return OrderPhotosCompanion(
+      id: id ?? this.id,
+      orderId: orderId ?? this.orderId,
+      fileName: fileName ?? this.fileName,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (orderId.present) {
+      map['order_id'] = Variable<int>(orderId.value);
+    }
+    if (fileName.present) {
+      map['file_name'] = Variable<String>(fileName.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OrderPhotosCompanion(')
+          ..write('id: $id, ')
+          ..write('orderId: $orderId, ')
+          ..write('fileName: $fileName, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3883,6 +4186,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $ItemSettingsTable itemSettings = $ItemSettingsTable(this);
   late final $ExpensesTable expenses = $ExpensesTable(this);
   late final $ChequesTable cheques = $ChequesTable(this);
+  late final $OrderPhotosTable orderPhotos = $OrderPhotosTable(this);
   late final Index ordersParty = Index(
     'orders_party',
     'CREATE INDEX orders_party ON orders (party_id)',
@@ -3915,6 +4219,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     'cheques_due',
     'CREATE INDEX cheques_due ON cheques (due_date)',
   );
+  late final Index orderPhotosOrder = Index(
+    'order_photos_order',
+    'CREATE INDEX order_photos_order ON order_photos (order_id)',
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3929,6 +4237,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     itemSettings,
     expenses,
     cheques,
+    orderPhotos,
     ordersParty,
     ordersDate,
     orderItemsOrder,
@@ -3937,6 +4246,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     paymentsOrder,
     voiceNotesParty,
     chequesDue,
+    orderPhotosOrder,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -3974,6 +4284,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('cheques', kind: UpdateKind.update)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'orders',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('order_photos', kind: UpdateKind.delete)],
     ),
   ]);
 }
@@ -4710,6 +5027,24 @@ final class $$OrdersTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<$OrderPhotosTable, List<OrderPhoto>>
+  _orderPhotosRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.orderPhotos,
+    aliasName: 'orders__id__order_photos__order_id',
+  );
+
+  $$OrderPhotosTableProcessedTableManager get orderPhotosRefs {
+    final manager = $$OrderPhotosTableTableManager(
+      $_db,
+      $_db.orderPhotos,
+    ).filter((f) => f.orderId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_orderPhotosRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$OrdersTableFilterComposer
@@ -4842,6 +5177,31 @@ class $$OrdersTableFilterComposer
           }) => $$VoiceNotesTableFilterComposer(
             $db: $db,
             $table: $db.voiceNotes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> orderPhotosRefs(
+    Expression<bool> Function($$OrderPhotosTableFilterComposer f) f,
+  ) {
+    final $$OrderPhotosTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.orderPhotos,
+      getReferencedColumn: (t) => t.orderId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$OrderPhotosTableFilterComposer(
+            $db: $db,
+            $table: $db.orderPhotos,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -5039,6 +5399,31 @@ class $$OrdersTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> orderPhotosRefs<T extends Object>(
+    Expression<T> Function($$OrderPhotosTableAnnotationComposer a) f,
+  ) {
+    final $$OrderPhotosTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.orderPhotos,
+      getReferencedColumn: (t) => t.orderId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$OrderPhotosTableAnnotationComposer(
+            $db: $db,
+            $table: $db.orderPhotos,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$OrdersTableTableManager
@@ -5059,6 +5444,7 @@ class $$OrdersTableTableManager
             bool orderItemsRefs,
             bool paymentsRefs,
             bool voiceNotesRefs,
+            bool orderPhotosRefs,
           })
         > {
   $$OrdersTableTableManager(_$AppDatabase db, $OrdersTable table)
@@ -5122,6 +5508,7 @@ class $$OrdersTableTableManager
                 orderItemsRefs = false,
                 paymentsRefs = false,
                 voiceNotesRefs = false,
+                orderPhotosRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -5129,6 +5516,7 @@ class $$OrdersTableTableManager
                     if (orderItemsRefs) db.orderItems,
                     if (paymentsRefs) db.payments,
                     if (voiceNotesRefs) db.voiceNotes,
+                    if (orderPhotosRefs) db.orderPhotos,
                   ],
                   addJoins:
                       <
@@ -5221,6 +5609,27 @@ class $$OrdersTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (orderPhotosRefs)
+                        await $_getPrefetchedData<
+                          Order,
+                          $OrdersTable,
+                          OrderPhoto
+                        >(
+                          currentTable: table,
+                          referencedTable: $$OrdersTableReferences
+                              ._orderPhotosRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$OrdersTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).orderPhotosRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.orderId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -5246,6 +5655,7 @@ typedef $$OrdersTableProcessedTableManager =
         bool orderItemsRefs,
         bool paymentsRefs,
         bool voiceNotesRefs,
+        bool orderPhotosRefs,
       })
     >;
 typedef $$OrderItemsTableCreateCompanionBuilder = OrderItemsCompanion Function({
@@ -7601,6 +8011,296 @@ typedef $$ChequesTableProcessedTableManager =
       Cheque,
       PrefetchHooks Function({bool partyId, bool paymentId})
     >;
+typedef $$OrderPhotosTableCreateCompanionBuilder =
+    OrderPhotosCompanion Function({
+      Value<int> id,
+      required int orderId,
+      required String fileName,
+      Value<DateTime> createdAt,
+    });
+typedef $$OrderPhotosTableUpdateCompanionBuilder =
+    OrderPhotosCompanion Function({
+      Value<int> id,
+      Value<int> orderId,
+      Value<String> fileName,
+      Value<DateTime> createdAt,
+    });
+
+final class $$OrderPhotosTableReferences
+    extends BaseReferences<_$AppDatabase, $OrderPhotosTable, OrderPhoto> {
+  $$OrderPhotosTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $OrdersTable _orderIdTable(_$AppDatabase db) =>
+      db.orders.createAlias('order_photos__order_id__orders__id');
+
+  $$OrdersTableProcessedTableManager get orderId {
+    final $_column = $_itemColumn<int>('order_id')!;
+
+    final manager = $$OrdersTableTableManager(
+      $_db,
+      $_db.orders,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_orderIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$OrderPhotosTableFilterComposer
+    extends Composer<_$AppDatabase, $OrderPhotosTable> {
+  $$OrderPhotosTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get fileName => $composableBuilder(
+    column: $table.fileName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$OrdersTableFilterComposer get orderId {
+    final $$OrdersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.orderId,
+      referencedTable: $db.orders,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$OrdersTableFilterComposer(
+            $db: $db,
+            $table: $db.orders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$OrderPhotosTableOrderingComposer
+    extends Composer<_$AppDatabase, $OrderPhotosTable> {
+  $$OrderPhotosTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get fileName => $composableBuilder(
+    column: $table.fileName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$OrdersTableOrderingComposer get orderId {
+    final $$OrdersTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.orderId,
+      referencedTable: $db.orders,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$OrdersTableOrderingComposer(
+            $db: $db,
+            $table: $db.orders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$OrderPhotosTableAnnotationComposer
+    extends Composer<_$AppDatabase, $OrderPhotosTable> {
+  $$OrderPhotosTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get fileName =>
+      $composableBuilder(column: $table.fileName, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  $$OrdersTableAnnotationComposer get orderId {
+    final $$OrdersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.orderId,
+      referencedTable: $db.orders,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$OrdersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.orders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$OrderPhotosTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $OrderPhotosTable,
+          OrderPhoto,
+          $$OrderPhotosTableFilterComposer,
+          $$OrderPhotosTableOrderingComposer,
+          $$OrderPhotosTableAnnotationComposer,
+          $$OrderPhotosTableCreateCompanionBuilder,
+          $$OrderPhotosTableUpdateCompanionBuilder,
+          (OrderPhoto, $$OrderPhotosTableReferences),
+          OrderPhoto,
+          PrefetchHooks Function({bool orderId})
+        > {
+  $$OrderPhotosTableTableManager(_$AppDatabase db, $OrderPhotosTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$OrderPhotosTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$OrderPhotosTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$OrderPhotosTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> orderId = const Value.absent(),
+                Value<String> fileName = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => OrderPhotosCompanion(
+                id: id,
+                orderId: orderId,
+                fileName: fileName,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int orderId,
+                required String fileName,
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => OrderPhotosCompanion.insert(
+                id: id,
+                orderId: orderId,
+                fileName: fileName,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$OrderPhotosTable, OrderPhoto>(table),
+                  $$OrderPhotosTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({orderId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (orderId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.orderId,
+                        referencedTable: $$OrderPhotosTableReferences
+                            ._orderIdTable(db),
+                        referencedColumn: $$OrderPhotosTableReferences
+                            ._orderIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$OrderPhotosTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $OrderPhotosTable,
+      OrderPhoto,
+      $$OrderPhotosTableFilterComposer,
+      $$OrderPhotosTableOrderingComposer,
+      $$OrderPhotosTableAnnotationComposer,
+      $$OrderPhotosTableCreateCompanionBuilder,
+      $$OrderPhotosTableUpdateCompanionBuilder,
+      (OrderPhoto, $$OrderPhotosTableReferences),
+      OrderPhoto,
+      PrefetchHooks Function({bool orderId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -7623,4 +8323,6 @@ class $AppDatabaseManager {
       $$ExpensesTableTableManager(_db, _db.expenses);
   $$ChequesTableTableManager get cheques =>
       $$ChequesTableTableManager(_db, _db.cheques);
+  $$OrderPhotosTableTableManager get orderPhotos =>
+      $$OrderPhotosTableTableManager(_db, _db.orderPhotos);
 }

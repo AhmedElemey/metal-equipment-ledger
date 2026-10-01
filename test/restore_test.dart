@@ -32,6 +32,7 @@ void main() {
       ],
       downPayment: 40000,
     );
+    await db.addOrderPhoto(order, 'photo_1.jpg');
     await db.addVoiceNote(
       VoiceNotesCompanion.insert(
         partyId: party,
@@ -66,6 +67,7 @@ void main() {
     final debtors = await phone2.watchDebtors().first;
     expect(debtors.map((d) => d.balance), [210000, 60000]);
     expect(await phone2.select(phone2.voiceNotes).get(), hasLength(2));
+    expect(await phone2.select(phone2.orderPhotos).get(), hasLength(2));
     expect(
       await phone2.customSelect('PRAGMA foreign_key_check').get(),
       isEmpty,
