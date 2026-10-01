@@ -22,7 +22,7 @@ to him versus effort.
 | 1 | ✅ **Payments ledger (كشف حساب)** — done in v1.1: each payment is its own dated entry; print/share a client statement | Today "paid" is one number per order. A real statement ("on 3/10 he paid 5,000") ends disputes, and he can send it on WhatsApp. |
 | 2 | ✅ **Payment reminders** — done in v1.1: list of clients with overdue balances (e.g. > 30 days), one tap sends a polite WhatsApp reminder | Turns the receivables number into cash collected. |
 | 3 | ✅ **PDF invoice / quotation (عرض سعر)** — done in v1.2 (no logo yet), shared via WhatsApp or any app | Looks professional. A quotation can be converted into an order with one tap. |
-| 4 | **Restore from Drive** | v1 already uploads the full DB. Restore protects him if the phone is lost or replaced. |
+| 4 | ✅ **Restore from Drive** — done in v1.3 (voice notes included) | v1 already uploads the full DB. Restore protects him if the phone is lost or replaced. |
 | 5 | **Item catalog with last price**: when typing an item name, suggest it and show the last buy and sell price | Faster order entry, and he never sells below what he paid. |
 
 ### Phase 3 — medium effort

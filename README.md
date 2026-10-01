@@ -16,7 +16,7 @@ Every evening the data is backed up to Google Drive.
 | **التحصيل** | Everyone who owes us, biggest first, with the time since they last paid, a "متأخر" (overdue) flag after 30 days without payment, a one-tap polite WhatsApp reminder, and when they were last reminded |
 | **العملاء** | Clients and suppliers (or both), search by name or phone, one-tap call or WhatsApp, balance, full order history |
 | **ملاحظات صوتية** | Record or play voice notes on a client/supplier, optionally linked to a specific order |
-| **نسخ احتياطي** | Every day after 21:00 the app updates an Excel file (`دفتر المعدات - البيانات.xlsx`) and a full database copy in a Drive folder. Drive keeps older versions of both files. |
+| **نسخ احتياطي واستعادة** | Every day after 21:00 the app updates an Excel file (`دفتر المعدات - البيانات.xlsx`) and a full database copy in a Drive folder, and uploads any new voice notes. Drive keeps older versions. A new phone can restore everything from Settings. |
 
 ## Tech
 
@@ -60,6 +60,15 @@ dart run build_runner build
 iOS: also create an iOS OAuth client and add `GIDClientID` and the reversed client
 ID URL scheme to `Info.plist`. The daily background task is Android-only for now.
 On iOS the backup runs when the app is opened after 21:00.
+
+## Restore on a new phone
+
+1. Install the app and open **الإعدادات → ربط حساب جوجل درايف**, using the **same Google account**.
+2. Because the phone has no data, the app finds the latest backup and offers to restore it. You can also restore any time with **استعادة من جوجل درايف**. If the phone already has data, the app first shows a red warning listing what will be erased.
+
+The restore checks the file first. A damaged backup, or one made by a newer app version, is refused, and the data on the phone is left untouched. Older backups are upgraded automatically. Voice notes are downloaded too.
+
+The app **never uploads an empty database**, so a freshly installed phone can't overwrite the real backup. Once the new phone has data, backups go to the same Drive files. To get back an older day, use the file's **version history** in Drive (Drive keeps about 30 days).
 
 ## How the daily backup works
 
