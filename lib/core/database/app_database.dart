@@ -1,7 +1,9 @@
 import 'dart:io';
 
 import 'package:drift/drift.dart';
+import 'package:drift/native.dart';
 import 'package:drift_flutter/drift_flutter.dart';
+import 'package:sqlite3/sqlite3.dart' as raw;
 
 part 'app_database.g.dart';
 
@@ -129,6 +131,18 @@ class DashboardStats {
   /// Number of parties that owe us money.
   final int debtors;
   final int openOrders;
+}
+
+typedef DataCounts = ({int parties, int orders});
+
+/// The file isn't a backup of this app (or is damaged).
+class InvalidBackup implements Exception {
+  const InvalidBackup();
+}
+
+/// The backup was made by a newer app version — update the app first.
+class BackupTooNew implements Exception {
+  const BackupTooNew();
 }
 
 /// A party that owes us money, for the collections list.
@@ -555,6 +569,82 @@ class AppDatabase extends _$AppDatabase {
       (delete(voiceNotes)..where((v) => v.id.equals(id))).go();
 
   // ----------------------------------------------------------------- backup
+
+  Future<DataCounts> counts() async {
+    final row = await customSelect(
+      'SELECT (SELECT COUNT(*) FROM parties) AS parties, '
+      '(SELECT COUNT(*) FROM orders) AS orders',
+    ).getSingle();
+    return (parties: row.read<int>('parties'), orders: row.read<int>('orders'));
+  }
+
+  /// Replaces every row with the contents of the backup file [backup].
+  ///
+  /// Works on the live connection (no file swap), so open screens refresh
+  /// by themselves. The backup is first brought to the current schema by
+  /// opening it with this app's migrations; [backup] is modified by that.
+  Future<DataCounts> replaceAllFrom(File backup) async {
+    _checkBackup(backup);
+    final upgraded = AppDatabase(NativeDatabase(backup));
+    try {
+      await upgraded.customSelect('SELECT 1').get(); // runs migrations
+    } finally {
+      await upgraded.close();
+    }
+
+    // Children first when deleting, parents first when inserting.
+    final ordered = <TableInfo>[
+      parties,
+      orders,
+      orderItems,
+      payments,
+      voiceNotes,
+    ];
+    await customStatement('ATTACH DATABASE ? AS backup', [backup.path]);
+    try {
+      await transaction(() async {
+        for (final t in ordered.reversed) {
+          await customStatement('DELETE FROM main.${t.actualTableName}');
+        }
+        for (final t in ordered) {
+          final cols = t.$columns.map((c) => '"${c.name}"').join(', ');
+          await customStatement(
+            'INSERT INTO main.${t.actualTableName} ($cols) '
+            'SELECT $cols FROM backup.${t.actualTableName}',
+          );
+        }
+      });
+    } finally {
+      await customStatement('DETACH DATABASE backup');
+    }
+    markTablesUpdated(allTables);
+    return counts();
+  }
+
+  /// Rejects files that aren't a readable backup of this app.
+  void _checkBackup(File file) {
+    final int version;
+    try {
+      final db = raw.sqlite3.open(file.path, mode: raw.OpenMode.readOnly);
+      try {
+        final ok = db.select('PRAGMA quick_check').first.columnAt(0) == 'ok';
+        final tables = db
+            .select("SELECT name FROM sqlite_master WHERE type = 'table'")
+            .map((r) => r.columnAt(0) as String)
+            .toSet();
+        if (!ok || !tables.containsAll(['parties', 'orders', 'order_items'])) {
+          throw const InvalidBackup();
+        }
+        version = db.userVersion;
+      } finally {
+        db.close();
+      }
+    } on raw.SqliteException {
+      throw const InvalidBackup();
+    }
+    if (version < 1) throw const InvalidBackup();
+    if (version > schemaVersion) throw const BackupTooNew();
+  }
 
   /// Writes a consistent snapshot of the live database to [target].
   Future<void> snapshotTo(File target) async {
