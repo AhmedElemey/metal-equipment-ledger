@@ -173,6 +173,19 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
   @override
   Widget build(BuildContext context) {
     final parties = ref.watch(partiesProvider('')).value ?? const <Party>[];
+    final partyId = _partyId;
+    final partyPrices = partyId == null
+        ? const <String, PartyItemPrice>{}
+        : ref
+                  .watch(
+                    partyItemPricesProvider((
+                      partyId: partyId,
+                      kind: _kind,
+                      excludeOrderId: widget.existing?.order.id,
+                    )),
+                  )
+                  .value ??
+              const <String, PartyItemPrice>{};
     final itemsByName = {
       for (final i
           in ref.watch(itemPricesProvider).value ?? const <ItemPrice>[])
@@ -260,6 +273,7 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
                 controllers: _items[i],
                 kind: _kind,
                 itemsByName: itemsByName,
+                partyPrices: partyPrices,
                 onChanged: () => setState(() {}),
                 onRemove: _items.length > 1 ? () => _removeItem(i) : null,
               ),
@@ -335,6 +349,7 @@ class _ItemFields extends StatelessWidget {
     required this.controllers,
     required this.kind,
     required this.itemsByName,
+    required this.partyPrices,
     required this.onChanged,
     required this.onRemove,
   });
@@ -344,12 +359,18 @@ class _ItemFields extends StatelessWidget {
 
   /// Past items and their last prices, for suggestions and hints.
   final Map<String, ItemPrice> itemsByName;
+
+  /// The selected party's last price per item name (empty if none chosen).
+  final Map<String, PartyItemPrice> partyPrices;
   final VoidCallback onChanged;
   final VoidCallback? onRemove;
 
   void _fillFrom(ItemPrice item) {
     controllers.unit.text = item.unit;
-    final price = kind == OrderKind.sale ? item.lastSale : item.lastPurchase;
+    // This party's own last price first, then the general last price.
+    final price =
+        partyPrices[item.name]?.price ??
+        (kind == OrderKind.sale ? item.lastSale : item.lastPurchase);
     // Never overwrite a price he already typed.
     if (price != null && controllers.price.text.trim().isEmpty) {
       controllers.price.text = piastersToInput(price);
@@ -375,6 +396,8 @@ class _ItemFields extends StatelessWidget {
                     controller: controllers.name,
                     focusNode: controllers.nameFocus,
                     items: itemsByName.values,
+                    partyPrices: partyPrices,
+                    kind: kind,
                     onSelected: _fillFrom,
                   ),
                 ),
@@ -432,7 +455,8 @@ class _ItemFields extends StatelessWidget {
                 controllers.price,
               ]),
               builder: (_, _) {
-                final known = itemsByName[controllers.name.text.trim()];
+                final name = controllers.name.text.trim();
+                final known = itemsByName[name];
                 if (known == null) return const SizedBox.shrink();
                 return Padding(
                   padding: const EdgeInsets.only(top: 8),
@@ -441,6 +465,7 @@ class _ItemFields extends StatelessWidget {
                     child: ItemPriceHint(
                       item: known,
                       kind: kind,
+                      partyPrice: partyPrices[name],
                       enteredPrice: parseMoneyToPiasters(
                         controllers.price.text,
                       ),

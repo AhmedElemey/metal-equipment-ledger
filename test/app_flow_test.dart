@@ -268,4 +268,73 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 1));
   });
+
+  testWidgets('a client\'s own last price wins over the general one', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final db = AppDatabase(NativeDatabase.memory());
+    final client = await tester.runAsync(() async {
+      final mine = await db.saveParty(
+        PartiesCompanion.insert(name: 'الحاج محمود', kind: PartyKind.buyer),
+      );
+      final other = await db.saveParty(
+        PartiesCompanion.insert(name: 'عميل آخر', kind: PartyKind.buyer),
+      );
+      for (final (party, date, price) in [
+        (mine, DateTime(2026, 8, 1), 100000),
+        (other, DateTime(2026, 9, 1), 110000), // newer, someone else
+      ]) {
+        await db.saveOrder(
+          OrdersCompanion.insert(
+            partyId: party,
+            kind: OrderKind.sale,
+            date: date,
+          ),
+          [
+            OrderItemsCompanion.insert(
+              orderId: 0,
+              name: 'صاج حديد 2 مم',
+              quantity: 1,
+              unitPricePiasters: price,
+            ),
+          ],
+        );
+      }
+      return mine;
+    });
+    router.go('/orders/new?partyId=$client');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db)],
+        child: const MetalLedgerApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'اسم الصنف *'),
+      'صاج',
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('لهذا العميل 1,000 ج.م'), findsOneWidget);
+    await tester.tap(find.text('صاج حديد 2 مم'));
+    await tester.pumpAndSettle();
+
+    final price = tester
+        .widget<TextFormField>(find.widgetWithText(TextFormField, 'سعر الوحدة'))
+        .controller!
+        .text;
+    expect(price, '1000');
+    expect(
+      find.textContaining('آخر سعر لهذا العميل: 1,000 ج.م'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('آخر بيع 1,100 ج.م'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
 }

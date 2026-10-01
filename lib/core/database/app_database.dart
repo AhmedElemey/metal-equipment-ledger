@@ -135,6 +135,9 @@ class DashboardStats {
 
 typedef DataCounts = ({int parties, int orders});
 
+/// The last price one party got for an item, in piasters.
+typedef PartyItemPrice = ({int price, DateTime at});
+
 /// An item name from past orders with its latest prices (in piasters).
 class ItemPrice {
   const ItemPrice({
@@ -560,6 +563,38 @@ class AppDatabase extends _$AppDatabase {
             lastPurchaseAt: r.readNullable<DateTime>('last_purchase_at'),
           ),
       ],
+    );
+  }
+
+  /// The last price [partyId] got for each item in real orders of [kind],
+  /// keyed by item name. [excludeOrderId] leaves out the order being edited.
+  Stream<Map<String, PartyItemPrice>> watchPartyItemPrices({
+    required int partyId,
+    required OrderKind kind,
+    int? excludeOrderId,
+  }) {
+    return customSelect(
+      'SELECT name, price, date FROM ('
+      'SELECT i.name, i.unit_price_piasters AS price, o.date, '
+      'ROW_NUMBER() OVER (PARTITION BY i.name '
+      'ORDER BY o.date DESC, o.id DESC, i.id DESC) AS rn '
+      'FROM order_items i JOIN orders o ON o.id = i.order_id '
+      'WHERE o.party_id = ?1 AND o.kind = ?2 AND o.id != ?3 AND $_counts'
+      ') WHERE rn = 1',
+      variables: [
+        Variable.withInt(partyId),
+        Variable.withInt(kind.index),
+        Variable.withInt(excludeOrderId ?? -1),
+      ],
+      readsFrom: {orders, orderItems},
+    ).watch().map(
+      (rows) => {
+        for (final r in rows)
+          r.read<String>('name'): (
+            price: r.read<int>('price'),
+            at: r.read<DateTime>('date'),
+          ),
+      },
     );
   }
 

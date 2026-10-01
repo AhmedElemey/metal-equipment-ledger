@@ -11,11 +11,15 @@ class ItemPriceHint extends StatelessWidget {
     super.key,
     required this.item,
     required this.kind,
+    required this.partyPrice,
     required this.enteredPrice,
   });
 
   final ItemPrice item;
   final OrderKind kind;
+
+  /// What this order's client/supplier got last time, if ever.
+  final PartyItemPrice? partyPrice;
 
   /// The unit price typed in the form, in piasters (null if empty/invalid).
   final int? enteredPrice;
@@ -29,9 +33,16 @@ class ItemPriceHint extends StatelessWidget {
         lastPurchase != null &&
         enteredPrice != null &&
         enteredPrice! < lastPurchase;
+    final party = partyPrice;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (party != null)
+          Text(
+            '${partyPriceLabel(kind)} ${formatMoney(party.price)} • '
+            '${formatDate(party.at)}',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
         Text(
           [
             if (lastPurchase != null) 'آخر شراء ${formatMoney(lastPurchase)}',
@@ -51,3 +62,7 @@ class ItemPriceHint extends StatelessWidget {
     );
   }
 }
+
+/// "آخر سعر لهذا العميل:" / "آخر سعر لهذا المورد:"
+String partyPriceLabel(OrderKind kind) =>
+    kind == OrderKind.sale ? 'آخر سعر لهذا العميل:' : 'آخر سعر لهذا المورد:';

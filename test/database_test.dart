@@ -308,6 +308,54 @@ void main() {
     expect(items.last.lastPurchase, isNull);
   });
 
+  test('party item prices: that party, that kind, real orders', () async {
+    final a = await addParty('عميل أ');
+    final b = await addParty('عميل ب');
+    await addOrder(a, OrderKind.sale, date: DateTime(2026, 8, 1));
+    final latest = await addOrder(
+      a,
+      OrderKind.sale,
+      date: DateTime(2026, 9, 1),
+    );
+    await db.saveOrder((await db.getOrder(latest)).toCompanion(true), [
+      OrderItemsCompanion.insert(
+        orderId: 0,
+        name: 'صاج',
+        quantity: 1,
+        unitPricePiasters: 120000,
+      ),
+    ]);
+    await addOrder(a, OrderKind.purchase, date: DateTime(2026, 9, 2));
+    await addOrder(
+      a,
+      OrderKind.sale,
+      date: DateTime(2026, 9, 3),
+      status: OrderStatus.quotation,
+    );
+    await addOrder(b, OrderKind.sale, date: DateTime(2026, 9, 4));
+
+    final prices = await db
+        .watchPartyItemPrices(partyId: a, kind: OrderKind.sale)
+        .first;
+    expect(prices['صاج'], (price: 120000, at: DateTime(2026, 9, 1)));
+    expect(prices['مسامير'], (price: 15050, at: DateTime(2026, 8, 1)));
+
+    // Editing the latest order: its own lines don't count.
+    final editing = await db
+        .watchPartyItemPrices(
+          partyId: a,
+          kind: OrderKind.sale,
+          excludeOrderId: latest,
+        )
+        .first;
+    expect(editing['صاج'], (price: 100000, at: DateTime(2026, 8, 1)));
+
+    expect(
+      await db.watchPartyItemPrices(partyId: b, kind: OrderKind.purchase).first,
+      isEmpty,
+    );
+  });
+
   test('excel report has the four Arabic sheets', () async {
     final party = await addParty('الحاج محمود');
     await addOrder(party, OrderKind.sale, downPayment: 1000);

@@ -11,12 +11,18 @@ class ItemNameField extends StatelessWidget {
     required this.controller,
     required this.focusNode,
     required this.items,
+    required this.partyPrices,
+    required this.kind,
     required this.onSelected,
   });
 
   final TextEditingController controller;
   final FocusNode focusNode;
   final Iterable<ItemPrice> items;
+
+  /// This order's client/supplier's last price per item name.
+  final Map<String, PartyItemPrice> partyPrices;
+  final OrderKind kind;
   final ValueChanged<ItemPrice> onSelected;
 
   static const _maxOptions = 8;
@@ -64,7 +70,9 @@ class ItemNameField extends StatelessWidget {
                 return ListTile(
                   dense: true,
                   title: Text(item.name),
-                  subtitle: Text(_pricesLine(item)),
+                  subtitle: Text(
+                    _pricesLine(item, partyPrices[item.name], kind),
+                  ),
                   onTap: () => onSelected(item),
                 );
               },
@@ -76,7 +84,10 @@ class ItemNameField extends StatelessWidget {
   }
 }
 
-String _pricesLine(ItemPrice item) => [
+String _pricesLine(ItemPrice item, PartyItemPrice? party, OrderKind kind) => [
+  if (party != null)
+    '${kind == OrderKind.sale ? 'لهذا العميل' : 'لهذا المورد'} '
+        '${formatMoney(party.price)}',
   if (item.lastSale != null) 'بيع ${formatMoney(item.lastSale!)}',
   if (item.lastPurchase != null) 'شراء ${formatMoney(item.lastPurchase!)}',
   item.unit,
