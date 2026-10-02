@@ -127,7 +127,7 @@ class _OrderBody extends ConsumerWidget {
                     leading: const Icon(Icons.person),
                     title: Text(summary.partyName),
                     subtitle: Text(formatDate(order.date)),
-                    trailing: const Icon(Icons.chevron_left),
+                    trailing: const Icon(Icons.chevron_right),
                     onTap: () => context.push('/parties/${order.partyId}'),
                   ),
                   if (order.notes != null) Text(order.notes!),

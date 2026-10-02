@@ -31,6 +31,7 @@ class _PartiesScreenState extends ConsumerState<PartiesScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('العملاء والموردين')),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'parties-add',
         onPressed: () => context.push('/parties/new'),
         icon: const Icon(Icons.person_add_alt_1),
         label: const Text('إضافة'),
@@ -84,7 +85,7 @@ class _PartyTile extends StatelessWidget {
         subtitle: Text(
           [party.kind.label, ?party.phone, ?party.city].join(' • '),
         ),
-        trailing: const Icon(Icons.chevron_left),
+        trailing: const Icon(Icons.chevron_right),
         onTap: () => context.push('/parties/${party.id}'),
       ),
     );

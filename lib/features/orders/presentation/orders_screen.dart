@@ -46,6 +46,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'orders-add',
         onPressed: () => context.push(
           _filter == _Filter.quotations
               ? '/orders/new?quotation=1'
