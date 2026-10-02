@@ -17,7 +17,11 @@ import '../../accounts/data/accounts_providers.dart';
 import '../../accounts/presentation/record_payment_dialog.dart';
 import '../../business/data/business_info.dart';
 import '../../parties/presentation/contact_launcher.dart';
+import '../../photos/data/photos.dart';
+import '../../photos/presentation/order_photos_section.dart';
 import '../../voice_notes/presentation/voice_notes_section.dart';
+import '../../../core/pdf.dart';
+import '../../reports/data/report_providers.dart';
 import '../data/order_pdf.dart';
 import '../data/orders_providers.dart';
 
@@ -62,7 +66,7 @@ class OrderDetailsScreen extends ConsumerWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('حذف الطلب؟'),
-        content: const Text('سيتم حذف الطلب وأصنافه نهائياً.'),
+        content: const Text('سيتم حذف الطلب وأصنافه وصوره نهائياً.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -78,7 +82,9 @@ class OrderDetailsScreen extends ConsumerWidget {
     if (ok != true || !context.mounted) return;
     // Leave first so this screen's stream never sees the missing row.
     context.pop();
-    await db.deleteOrder(orderId);
+    final photos = await db.watchOrderPhotos(orderId).first;
+    await db.deleteOrder(orderId); // photo rows cascade
+    await deletePhotoFiles(photos);
   }
 }
 
@@ -171,6 +177,8 @@ class _OrderBody extends ConsumerWidget {
                           ? AppColors.danger
                           : null,
                     ),
+                    if (order.kind == OrderKind.sale)
+                      _ProfitRow(orderId: order.id),
                   ],
                   const SizedBox(height: 12),
                   Row(
@@ -227,6 +235,7 @@ class _OrderBody extends ConsumerWidget {
             },
           ),
         ],
+        OrderPhotosSliver(orderId: order.id),
         VoiceNotesSliver(partyId: order.partyId, orderId: order.id),
         const SliverToBoxAdapter(child: SizedBox(height: 32)),
       ],
@@ -344,6 +353,33 @@ class _OrderBody extends ConsumerWidget {
       {'text': lines.join('\n')},
     );
     await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+}
+
+class _ProfitRow extends ConsumerWidget {
+  const _ProfitRow({required this.orderId});
+
+  final int orderId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final p = ref.watch(orderProfitProvider(orderId)).value;
+    if (p == null) return const SizedBox.shrink();
+    return Column(
+      children: [
+        const Divider(),
+        TotalRow(
+          'الربح التقريبي',
+          formatMoney(p.profit),
+          color: p.profit >= 0 ? AppColors.sale : AppColors.danger,
+        ),
+        if (p.uncostedLines > 0)
+          Text(
+            '${p.uncostedLines} صنف بدون سعر شراء لم يُحسب',
+            style: const TextStyle(color: AppColors.orange, fontSize: 12),
+          ),
+      ],
+    );
   }
 }
 

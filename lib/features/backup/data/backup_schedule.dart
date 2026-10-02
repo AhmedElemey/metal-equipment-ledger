@@ -29,6 +29,8 @@ Future<bool> backupIfDue(AppDatabase db) async {
     }
     await DriveBackup.run(db);
     return true;
+  } on NothingToBackUp {
+    return true; // nothing to do — don't make WorkManager retry
   } catch (e, st) {
     debugPrint('Daily backup failed: $e\n$st');
     return false;

@@ -40,3 +40,17 @@ extension OrderStatusLabel on OrderStatus {
     OrderStatus.quotation => Colors.purple,
   };
 }
+
+extension ChequeStatusLabel on ChequeStatus {
+  String get label => switch (this) {
+    ChequeStatus.pending => 'قيد التحصيل',
+    ChequeStatus.cleared => 'تم الصرف',
+    ChequeStatus.bounced => 'مرتجع',
+  };
+
+  Color get color => switch (this) {
+    ChequeStatus.pending => AppColors.orange,
+    ChequeStatus.cleared => AppColors.sale,
+    ChequeStatus.bounced => AppColors.danger,
+  };
+}

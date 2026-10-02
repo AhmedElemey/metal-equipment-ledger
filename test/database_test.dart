@@ -244,6 +244,346 @@ void main() {
     expect(await db.watchOrderSummaries(quotations: true).first, isEmpty);
   });
 
+  test('item prices: latest sale and purchase, real orders only', () async {
+    final client = await addParty('عميل');
+    final supplier = await addParty('مورد', PartyKind.seller);
+    Future<void> line(
+      int party,
+      OrderKind kind,
+      DateTime date,
+      int price, {
+      String unit = 'طن',
+      OrderStatus status = OrderStatus.pending,
+    }) => db.saveOrder(
+      OrdersCompanion.insert(
+        partyId: party,
+        kind: kind,
+        date: date,
+        status: Value(status),
+      ),
+      [
+        OrderItemsCompanion.insert(
+          orderId: 0,
+          name: 'صاج',
+          quantity: 1,
+          unit: Value(unit),
+          unitPricePiasters: price,
+        ),
+      ],
+    );
+    await line(supplier, OrderKind.purchase, DateTime(2026, 8, 1), 80000);
+    await line(supplier, OrderKind.purchase, DateTime(2026, 9, 1), 90000);
+    await line(client, OrderKind.sale, DateTime(2026, 9, 5), 100000);
+    await line(client, OrderKind.sale, DateTime(2026, 8, 5), 95000);
+    await line(
+      client,
+      OrderKind.sale,
+      DateTime(2026, 9, 20),
+      1,
+      status: OrderStatus.cancelled,
+    );
+    await line(
+      client,
+      OrderKind.sale,
+      DateTime(2026, 9, 25),
+      2,
+      status: OrderStatus.quotation,
+    );
+    await line(
+      client,
+      OrderKind.sale,
+      DateTime(2026, 9, 10),
+      99000,
+      unit: 'كيلو',
+    );
+    await addOrder(client, OrderKind.sale, date: DateTime(2026, 7, 1));
+
+    final items = await db.watchItems().first;
+    expect(items.map((i) => i.name), ['صاج', 'مسامير']);
+    final sheet = items.first;
+    expect(sheet.lastSale, 99000);
+    expect(sheet.lastSaleAt, DateTime(2026, 9, 10));
+    expect(sheet.lastPurchase, 90000);
+    expect(sheet.unit, 'كيلو');
+    expect(items.last.lastPurchase, isNull);
+  });
+
+  test('party item prices: that party, that kind, real orders', () async {
+    final a = await addParty('عميل أ');
+    final b = await addParty('عميل ب');
+    await addOrder(a, OrderKind.sale, date: DateTime(2026, 8, 1));
+    final latest = await addOrder(
+      a,
+      OrderKind.sale,
+      date: DateTime(2026, 9, 1),
+    );
+    await db.saveOrder((await db.getOrder(latest)).toCompanion(true), [
+      OrderItemsCompanion.insert(
+        orderId: 0,
+        name: 'صاج',
+        quantity: 1,
+        unitPricePiasters: 120000,
+      ),
+    ]);
+    await addOrder(a, OrderKind.purchase, date: DateTime(2026, 9, 2));
+    await addOrder(
+      a,
+      OrderKind.sale,
+      date: DateTime(2026, 9, 3),
+      status: OrderStatus.quotation,
+    );
+    await addOrder(b, OrderKind.sale, date: DateTime(2026, 9, 4));
+
+    final prices = await db
+        .watchPartyItemPrices(partyId: a, kind: OrderKind.sale)
+        .first;
+    expect(prices['صاج'], (price: 120000, at: DateTime(2026, 9, 1)));
+    expect(prices['مسامير'], (price: 15050, at: DateTime(2026, 8, 1)));
+
+    // Editing the latest order: its own lines don't count.
+    final editing = await db
+        .watchPartyItemPrices(
+          partyId: a,
+          kind: OrderKind.sale,
+          excludeOrderId: latest,
+        )
+        .first;
+    expect(editing['صاج'], (price: 100000, at: DateTime(2026, 8, 1)));
+
+    expect(
+      await db.watchPartyItemPrices(partyId: b, kind: OrderKind.purchase).first,
+      isEmpty,
+    );
+  });
+
+  test('stock: purchases − sales + counts; only tracked items alert', () async {
+    final client = await addParty('عميل');
+    final supplier = await addParty('مورد', PartyKind.seller);
+    // Each order: 2.5 صاج + 3 مسامير.
+    await addOrder(supplier, OrderKind.purchase);
+    await addOrder(supplier, OrderKind.purchase);
+    await addOrder(client, OrderKind.sale);
+    await addOrder(client, OrderKind.sale, status: OrderStatus.cancelled);
+    await addOrder(client, OrderKind.sale, status: OrderStatus.quotation);
+
+    Future<ItemSummary> item(String name) async =>
+        (await db.watchItems().first).singleWhere((i) => i.name == name);
+
+    var sheet = await item('صاج');
+    expect(sheet.stock, 2.5);
+    expect(sheet.tracked, isFalse);
+    expect(sheet.isLow, isFalse);
+
+    // A physical count finds 2 (not 2.5) and sets an alert at 3.
+    await db.recordStockCount(
+      'صاج',
+      current: sheet.stock,
+      actual: 2,
+      date: DateTime(2026, 10, 1),
+    );
+    await db.saveItemSettings('صاج', unit: 'طن', minQuantity: 3);
+    sheet = await item('صاج');
+    expect(sheet.stock, 2);
+    expect(sheet.unit, 'طن');
+    expect(sheet.tracked, isTrue);
+    expect(sheet.isLow, isTrue);
+
+    // An item that exists only as opening stock.
+    await db.recordStockCount(
+      'زاوية',
+      current: 0,
+      actual: 40,
+      date: DateTime(2026, 10, 1),
+    );
+    final angle = await item('زاوية');
+    expect((angle.stock, angle.unit, angle.lastSale), (40.0, 'قطعة', null));
+  });
+
+  test('expenses are listed per month, newest first', () async {
+    for (final (day, amount) in [(1, 100), (15, 200), (31, 300)]) {
+      await db.addExpense(
+        ExpensesCompanion.insert(
+          date: DateTime(2026, 10, day),
+          category: 'نقل',
+          amountPiasters: amount,
+        ),
+      );
+    }
+    await db.addExpense(
+      ExpensesCompanion.insert(
+        date: DateTime(2026, 11, 1),
+        category: 'إيجار',
+        amountPiasters: 999,
+      ),
+    );
+    final october = await db
+        .watchExpenses(DateTime(2026, 10), DateTime(2026, 11))
+        .first;
+    expect(october.map((e) => e.amountPiasters), [300, 200, 100]);
+  });
+
+  group('profit', () {
+    Future<int> line(
+      int party,
+      OrderKind kind,
+      String name,
+      double qty,
+      int price,
+      DateTime date, {
+      OrderStatus status = OrderStatus.pending,
+    }) => db.saveOrder(
+      OrdersCompanion.insert(
+        partyId: party,
+        kind: kind,
+        date: date,
+        status: Value(status),
+      ),
+      [
+        OrderItemsCompanion.insert(
+          orderId: 0,
+          name: name,
+          quantity: qty,
+          unitPricePiasters: price,
+        ),
+      ],
+    );
+
+    test('uses the weighted average purchase cost', () async {
+      final supplier = await addParty('مورد', PartyKind.seller);
+      final client = await addParty('عميل');
+      final d = DateTime(2026, 10, 5);
+      // 1 × 800 + 3 × 1,000 → average 950.
+      await line(supplier, OrderKind.purchase, 'صاج', 1, 80000, d);
+      await line(supplier, OrderKind.purchase, 'صاج', 3, 100000, d);
+      await line(
+        supplier,
+        OrderKind.purchase,
+        'صاج',
+        5,
+        1,
+        d,
+        status: OrderStatus.cancelled,
+      );
+      final sale = await db.saveOrder(
+        OrdersCompanion.insert(partyId: client, kind: OrderKind.sale, date: d),
+        [
+          OrderItemsCompanion.insert(
+            orderId: 0,
+            name: 'صاج',
+            quantity: 2,
+            unitPricePiasters: 120000,
+          ),
+          OrderItemsCompanion.insert(
+            orderId: 0,
+            name: 'صنف جديد', // never bought
+            quantity: 1,
+            unitPricePiasters: 5000,
+          ),
+        ],
+      );
+
+      final p = await db.watchOrderProfit(sale).first;
+      expect(p, (profit: 2 * (120000 - 95000), uncostedLines: 1));
+    });
+
+    test('monthly report: totals, profit after expenses, top lists', () async {
+      final supplier = await addParty('مورد', PartyKind.seller);
+      final big = await addParty('عميل كبير');
+      final small = await addParty('عميل صغير');
+      final oct = DateTime(2026, 10, 10);
+      await line(supplier, OrderKind.purchase, 'صاج', 10, 90000, oct);
+      await line(big, OrderKind.sale, 'صاج', 3, 100000, oct);
+      await line(small, OrderKind.sale, 'صاج', 1, 110000, oct);
+      await line(big, OrderKind.sale, 'صاج', 9, 1, DateTime(2026, 9, 30));
+      await line(
+        small,
+        OrderKind.sale,
+        'صاج',
+        9,
+        1,
+        oct,
+        status: OrderStatus.quotation,
+      );
+      await pay(big, 150000, date: oct);
+      await pay(supplier, 400000, direction: PaymentDirection.paid, date: oct);
+      await db.addExpense(
+        ExpensesCompanion.insert(
+          date: oct,
+          category: 'نقل',
+          amountPiasters: 5000,
+        ),
+      );
+
+      final r = await db
+          .watchMonthlyReport(DateTime(2026, 10), DateTime(2026, 11))
+          .first;
+      expect(r.sales, 410000);
+      expect(r.purchases, 900000);
+      expect(r.received, 150000);
+      expect(r.paidOut, 400000);
+      expect(r.expenses, 5000);
+      // Sept sale (price 1) is outside; average cost includes all purchases.
+      expect(r.grossProfit, 3 * 10000 + 1 * 20000);
+      expect(r.netProfit, 50000 - 5000);
+      expect(r.uncostedLines, 0);
+      expect(r.topClients.map((c) => c.name), ['عميل كبير', 'عميل صغير']);
+      expect(r.topItems.single, (name: 'صاج', total: 410000));
+    });
+  });
+
+  test('cheques move the balance only while cleared', () async {
+    final client = await addParty('عميل');
+    await addOrder(client, OrderKind.sale); // owes 2,951.50
+    final id = await db.addCheque(
+      ChequesCompanion.insert(
+        partyId: client,
+        direction: PaymentDirection.received,
+        amountPiasters: 200000,
+        number: const Value('1234'),
+        dueDate: DateTime(2026, 10, 20),
+      ),
+    );
+    Future<int> balance() => db.watchPartyBalance(client).first;
+
+    expect(await balance(), orderTotal);
+    expect(await db.watchChequesDueCount(DateTime(2026, 10, 27)).first, 1);
+    expect(await db.watchChequesDueCount(DateTime(2026, 10, 19)).first, 0);
+    expect(await db.hasHistory(client), isTrue);
+
+    await db.setChequeStatus(id, ChequeStatus.cleared, DateTime(2026, 10, 20));
+    expect(await balance(), orderTotal - 200000);
+    final statement = await db.watchStatement(client).first;
+    expect(statement.last.note, 'شيك رقم 1234');
+    expect(await db.watchChequesDueCount(DateTime(2027)).first, 0);
+
+    // Clearing twice doesn't pay twice.
+    await db.setChequeStatus(id, ChequeStatus.cleared, DateTime(2026, 10, 21));
+    expect(await db.select(db.payments).get(), hasLength(1));
+
+    // It bounced after all: the payment goes away.
+    await db.setChequeStatus(id, ChequeStatus.bounced, DateTime(2026, 10, 22));
+    expect(await balance(), orderTotal);
+    expect(await db.select(db.payments).get(), isEmpty);
+
+    await db.setChequeStatus(id, ChequeStatus.cleared, DateTime(2026, 10, 23));
+    await db.deleteCheque(id);
+    expect(await balance(), orderTotal);
+    expect(await db.select(db.cheques).get(), isEmpty);
+  });
+
+  test('order photos are listed in order and go with their order', () async {
+    final party = await addParty('عميل');
+    final id = await addOrder(party, OrderKind.sale);
+    await db.addOrderPhoto(id, 'photo_1.jpg');
+    await db.addOrderPhoto(id, 'photo_2.jpg');
+    expect((await db.watchOrderPhotos(id).first).map((p) => p.fileName), [
+      'photo_1.jpg',
+      'photo_2.jpg',
+    ]);
+    await db.deleteOrder(id);
+    expect(await db.select(db.orderPhotos).get(), isEmpty);
+  });
+
   test('excel report has the four Arabic sheets', () async {
     final party = await addParty('الحاج محمود');
     await addOrder(party, OrderKind.sale, downPayment: 1000);
@@ -251,7 +591,14 @@ void main() {
     final excel = Excel.decodeBytes(await buildExcelReport(db));
     expect(
       excel.tables.keys,
-      containsAll(['الطلبات', 'الأصناف', 'الدفعات', 'العملاء والموردين']),
+      containsAll([
+        'الطلبات',
+        'الأصناف',
+        'الدفعات',
+        'العملاء والموردين',
+        'المخزون',
+        'المصروفات',
+      ]),
     );
     expect(excel.tables['الطلبات']!.maxRows, 2);
     expect(excel.tables['الأصناف']!.maxRows, 3);

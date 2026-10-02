@@ -50,5 +50,26 @@ void main() {
 
     final fkErrors = await db.customSelect('PRAGMA foreign_key_check').get();
     expect(fkErrors, isEmpty);
+
+    // Later versions' tables and indexes exist after upgrading from v1.
+    final names =
+        (await db
+                .customSelect(
+                  "SELECT name FROM sqlite_master WHERE type IN ('table', 'index')",
+                )
+                .get())
+            .map((r) => r.read<String>('name'))
+            .toSet();
+    expect(
+      names,
+      containsAll([
+        'stock_adjustments',
+        'item_settings',
+        'expenses',
+        'orders_party',
+        'order_items_order',
+        'payments_party',
+      ]),
+    );
   });
 }

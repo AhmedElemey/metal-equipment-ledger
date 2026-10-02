@@ -4,12 +4,16 @@ import 'package:go_router/go_router.dart';
 import '../features/accounts/presentation/collections_screen.dart';
 import '../features/accounts/presentation/statement_screen.dart';
 import '../features/backup/presentation/settings_screen.dart';
+import '../features/cheques/presentation/cheques_screen.dart';
+import '../features/expenses/presentation/expenses_screen.dart';
+import '../features/items/presentation/items_screen.dart';
 import '../features/dashboard/presentation/dashboard_screen.dart';
 import '../features/orders/presentation/order_details_screen.dart';
 import '../features/orders/presentation/order_edit_screen.dart';
 import '../features/orders/presentation/order_form_screen.dart';
 import '../features/orders/presentation/orders_screen.dart';
 import '../features/parties/presentation/parties_screen.dart';
+import '../features/reports/presentation/monthly_report_screen.dart';
 import '../features/parties/presentation/party_details_screen.dart';
 import '../features/parties/presentation/party_edit_screen.dart';
 import '../features/parties/presentation/party_form_screen.dart';
@@ -39,6 +43,14 @@ final router = GoRouter(
       builder: (_, s) => StatementScreen(partyId: _id(s)),
     ),
     GoRoute(path: '/collections', builder: (_, _) => const CollectionsScreen()),
+    GoRoute(path: '/expenses', builder: (_, _) => const ExpensesScreen()),
+    GoRoute(path: '/cheques', builder: (_, _) => const ChequesScreen()),
+    GoRoute(path: '/report', builder: (_, _) => const MonthlyReportScreen()),
+    GoRoute(
+      path: '/items',
+      builder: (_, s) =>
+          ItemsScreen(lowOnly: s.uri.queryParameters['low'] == '1'),
+    ),
     GoRoute(path: '/parties/new', builder: (_, _) => const PartyFormScreen()),
     GoRoute(
       path: '/parties/:id',

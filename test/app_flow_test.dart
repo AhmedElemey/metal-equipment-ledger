@@ -1,3 +1,9 @@
+import 'package:drift/drift.dart'
+    show ApplyInterceptor, QueryExecutor, QueryInterceptor, Value;
+
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +13,8 @@ import 'package:metal_ledger/app.dart';
 import 'package:metal_ledger/core/database/app_database.dart';
 import 'package:metal_ledger/core/database/database_provider.dart';
 import 'package:metal_ledger/core/router.dart';
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
+import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
@@ -18,6 +26,10 @@ void main() {
         InMemorySharedPreferencesAsync.empty();
     SharedPreferences.setMockInitialValues({});
   });
+
+  // The router is app-global: start every test from the home screen so
+  // tests don't depend on which one ran before.
+  setUp(() => router.go('/'));
 
   testWidgets('add a client, then a sale order for them', (tester) async {
     // A typical Android phone screen.
@@ -193,4 +205,528 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 1));
   });
+
+  testWidgets('item name suggests past items and fills the last price', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final db = AppDatabase(NativeDatabase.memory());
+    await tester.runAsync(() async {
+      final supplier = await db.saveParty(
+        PartiesCompanion.insert(name: 'مورد', kind: PartyKind.seller),
+      );
+      final client = await db.saveParty(
+        PartiesCompanion.insert(name: 'عميل', kind: PartyKind.buyer),
+      );
+      for (final (party, kind, price) in [
+        (supplier, OrderKind.purchase, 90000),
+        (client, OrderKind.sale, 100000),
+      ]) {
+        await db.saveOrder(
+          OrdersCompanion.insert(
+            partyId: party,
+            kind: kind,
+            date: DateTime(2026, 9, 1),
+          ),
+          [
+            OrderItemsCompanion.insert(
+              orderId: 0,
+              name: 'صاج حديد 2 مم',
+              quantity: 1,
+              unit: const Value('طن'),
+              unitPricePiasters: price,
+            ),
+          ],
+        );
+      }
+    });
+    router.go('/orders/new');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db)],
+        child: const MetalLedgerApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'اسم الصنف *'),
+      'صاج',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('بيع 1,000 ج.م • شراء 900 ج.م • طن'), findsOneWidget);
+    await tester.tap(find.text('صاج حديد 2 مم'));
+    await tester.pumpAndSettle();
+
+    String fieldText(String label) => tester
+        .widget<TextFormField>(find.widgetWithText(TextFormField, label))
+        .controller!
+        .text;
+    expect(fieldText('سعر الوحدة'), '1000');
+    expect(fieldText('الوحدة'), 'طن');
+    expect(find.text('آخر شراء 900 ج.م • آخر بيع 1,000 ج.م'), findsOneWidget);
+    expect(find.text('⚠ السعر أقل من آخر سعر شراء'), findsNothing);
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'سعر الوحدة'),
+      '850',
+    );
+    await tester.pump();
+    expect(find.text('⚠ السعر أقل من آخر سعر شراء'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('a client\'s own last price wins over the general one', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final db = AppDatabase(NativeDatabase.memory());
+    final client = await tester.runAsync(() async {
+      final mine = await db.saveParty(
+        PartiesCompanion.insert(name: 'الحاج محمود', kind: PartyKind.buyer),
+      );
+      final other = await db.saveParty(
+        PartiesCompanion.insert(name: 'عميل آخر', kind: PartyKind.buyer),
+      );
+      for (final (party, date, price) in [
+        (mine, DateTime(2026, 8, 1), 100000),
+        (other, DateTime(2026, 9, 1), 110000), // newer, someone else
+      ]) {
+        await db.saveOrder(
+          OrdersCompanion.insert(
+            partyId: party,
+            kind: OrderKind.sale,
+            date: date,
+          ),
+          [
+            OrderItemsCompanion.insert(
+              orderId: 0,
+              name: 'صاج حديد 2 مم',
+              quantity: 1,
+              unitPricePiasters: price,
+            ),
+          ],
+        );
+      }
+      return mine;
+    });
+    router.go('/orders/new?partyId=$client');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db)],
+        child: const MetalLedgerApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'اسم الصنف *'),
+      'صاج',
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('لهذا العميل 1,000 ج.م'), findsOneWidget);
+    await tester.tap(find.text('صاج حديد 2 مم'));
+    await tester.pumpAndSettle();
+
+    final price = tester
+        .widget<TextFormField>(find.widgetWithText(TextFormField, 'سعر الوحدة'))
+        .controller!
+        .text;
+    expect(price, '1000');
+    expect(
+      find.textContaining('آخر سعر لهذا العميل: 1,000 ج.م'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('آخر بيع 1,100 ج.م'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('add an item with opening stock, then oversell it', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final db = AppDatabase(NativeDatabase.memory());
+    router.go('/items');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db)],
+        child: const MetalLedgerApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('صنف جديد'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'اسم الصنف *'),
+      'ماسورة 3 بوصة',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'الكمية الموجودة الآن'),
+      '10',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'نبهني لما توصل الكمية إلى (اختياري)'),
+      '12',
+    );
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+    expect(find.text('⚠ 10 قطعة'), findsOneWidget); // below its alert level
+
+    router.go('/');
+    await tester.pumpAndSettle();
+    expect(find.text('المخزون: 1 صنف أوشك على النفاد'), findsOneWidget);
+
+    router.go('/orders/new');
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'اسم الصنف *'),
+      'ماسورة',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ماسورة 3 بوصة'));
+    await tester.pumpAndSettle();
+    expect(find.text('المتاح في المخزون: 10 قطعة'), findsOneWidget);
+    await tester.enterText(find.widgetWithText(TextFormField, 'الكمية'), '15');
+    await tester.pump();
+    expect(find.text('⚠ الكمية أكبر من المتاح في المخزون'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('record an expense from the home screen tools', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final db = AppDatabase(NativeDatabase.memory());
+    router.go('/');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db)],
+        child: const MetalLedgerApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('المصروفات'));
+    await tester.pumpAndSettle();
+    expect(find.text('لا توجد مصروفات في هذا الشهر'), findsOneWidget);
+    await tester.tap(find.text('مصروف جديد'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تحميل وتنزيل'));
+    await tester.enterText(find.widgetWithText(TextFormField, 'المبلغ'), '250');
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('تحميل وتنزيل'), findsOneWidget);
+    expect(find.text('250 ج.م'), findsNWidgets(2)); // the row and the total
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('monthly report and order profit', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final db = AppDatabase(NativeDatabase.memory());
+    final now = DateTime.now();
+    final saleId = await tester.runAsync(() async {
+      final supplier = await db.saveParty(
+        PartiesCompanion.insert(name: 'مورد', kind: PartyKind.seller),
+      );
+      final client = await db.saveParty(
+        PartiesCompanion.insert(name: 'عميل', kind: PartyKind.buyer),
+      );
+      Future<int> order(int party, OrderKind kind, int price) => db.saveOrder(
+        OrdersCompanion.insert(partyId: party, kind: kind, date: now),
+        [
+          OrderItemsCompanion.insert(
+            orderId: 0,
+            name: 'صاج',
+            quantity: 2,
+            unitPricePiasters: price,
+          ),
+        ],
+      );
+      await order(supplier, OrderKind.purchase, 90000);
+      await db.addExpense(
+        ExpensesCompanion.insert(
+          date: now,
+          category: 'نقل',
+          amountPiasters: 5000,
+        ),
+      );
+      return order(client, OrderKind.sale, 100000);
+    });
+
+    router.go('/orders/$saleId');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db)],
+        child: const MetalLedgerApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('الربح التقريبي'), findsOneWidget);
+    expect(find.text('200 ج.م'), findsOneWidget); // 2 × (1,000 − 900)
+
+    router.go('/');
+    await tester.pumpAndSettle();
+    // Bring the tile clear of the bottom navigation bar before tapping.
+    await tester.scrollUntilVisible(find.text('التقرير الشهري'), 200);
+    await Scrollable.ensureVisible(
+      tester.element(find.text('التقرير الشهري')),
+      alignment: 0.5,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('التقرير الشهري'));
+    await tester.pumpAndSettle();
+    expect(find.text('150 ج.م'), findsOneWidget); // 200 profit − 50 expenses
+    expect(find.text('عميل'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('a double tap on save records the expense once', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    // Writes take time on a phone; that's when a second tap gets through.
+    final db = AppDatabase(
+      NativeDatabase.memory().interceptWith(_SlowWrites()),
+    );
+    router.go('/expenses');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db)],
+        child: const MetalLedgerApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('مصروف جديد'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextFormField, 'المبلغ'), '100');
+
+    await tester.tap(find.text('حفظ'));
+    await tester.tap(find.text('حفظ'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+
+    final rows = await tester.runAsync(() => db.select(db.expenses).get());
+    expect(rows, hasLength(1));
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('the weight calculator fills quantity, unit and name', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final db = AppDatabase(NativeDatabase.memory());
+    router.go('/orders/new');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db)],
+        child: const MetalLedgerApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('حاسبة الوزن'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ماسورة مستديرة'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextField, 'القطر الخارجي (مم)'),
+      '60.3',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'سمك الجدار (مم)'),
+      '3.2',
+    );
+    await tester.enterText(find.widgetWithText(TextField, 'عدد القطع'), '10');
+    await tester.pump();
+    expect(find.textContaining('الوزن: 270.'), findsOneWidget); // 10 × 6 m
+    await tester.tap(find.text('استخدام الوزن'));
+    await tester.pumpAndSettle();
+
+    String field(String label) => tester
+        .widget<TextFormField>(find.widgetWithText(TextFormField, label))
+        .controller!
+        .text;
+    expect(field('الكمية'), startsWith('270.'));
+    expect(field('الوحدة'), 'كيلو');
+    expect(field('اسم الصنف *'), 'ماسورة مستديرة 60.3×3.2 مم');
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('record a cheque, then clear it', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final db = AppDatabase(NativeDatabase.memory());
+    final client = await tester.runAsync(
+      () => db.saveParty(
+        PartiesCompanion.insert(name: 'ورشة النور', kind: PartyKind.buyer),
+      ),
+    );
+    router.go('/cheques');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db)],
+        child: const MetalLedgerApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('شيك جديد'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(DropdownMenu<Party>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ورشة النور').last);
+    await tester.pumpAndSettle();
+    expect(find.text('استلمته منه'), findsNothing); // a client: received
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'المبلغ'),
+      '5000',
+    );
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('من ورشة النور'), findsOneWidget);
+    expect(find.textContaining('اليوم'), findsOneWidget); // due today
+    await tester.tap(find.text('قيد التحصيل').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تم الصرف'));
+    await tester.pumpAndSettle();
+
+    final balance = await tester.runAsync(
+      () => db.watchPartyBalance(client!).first,
+    );
+    expect(balance, -500000); // paid in advance
+    expect(find.textContaining('من ورشة النور'), findsNothing); // not pending
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('order photos: strip, viewer and delete', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final docs = Directory.systemTemp.createTempSync('ledger_docs');
+    addTearDown(() => docs.deleteSync(recursive: true));
+    final realPaths = PathProviderPlatform.instance;
+    PathProviderPlatform.instance = _FakePathProvider(docs.path);
+    addTearDown(() => PathProviderPlatform.instance = realPaths);
+
+    final db = AppDatabase(NativeDatabase.memory());
+    final orderId = await tester.runAsync(() async {
+      final party = await db.saveParty(
+        PartiesCompanion.insert(name: 'عميل', kind: PartyKind.buyer),
+      );
+      final id = await db.saveOrder(
+        OrdersCompanion.insert(
+          partyId: party,
+          kind: OrderKind.sale,
+          date: DateTime(2026, 10, 1),
+        ),
+        [
+          OrderItemsCompanion.insert(
+            orderId: 0,
+            name: 'صاج',
+            quantity: 1,
+            unitPricePiasters: 100,
+          ),
+        ],
+      );
+      Directory('${docs.path}/order_photos').createSync();
+      File('${docs.path}/order_photos/photo_1.png').writeAsBytesSync(_tinyPng);
+      await db.addOrderPhoto(id, 'photo_1.png');
+      return id;
+    });
+    final photo = File('${docs.path}/order_photos/photo_1.png');
+
+    router.go('/orders/$orderId');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db)],
+        child: const MetalLedgerApp(),
+      ),
+    );
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('الصور (1)'), 200);
+    // The strip resolves the photos folder (real file I/O) once built.
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(Image), findsOneWidget);
+
+    await tester.tap(find.byType(Image));
+    await tester.pumpAndSettle();
+    expect(find.byType(InteractiveViewer), findsOneWidget);
+    await tester.tap(find.byTooltip('حذف'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('حذف').last);
+    await tester.pumpAndSettle();
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('الصور (0)'), findsOneWidget);
+    expect(photo.existsSync(), isFalse);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
 }
+
+class _SlowWrites extends QueryInterceptor {
+  @override
+  Future<int> runInsert(
+    QueryExecutor executor,
+    String statement,
+    List<Object?> args,
+  ) async {
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    return executor.runInsert(statement, args);
+  }
+}
+
+class _FakePathProvider extends PathProviderPlatform
+    with MockPlatformInterfaceMixin {
+  _FakePathProvider(this.root);
+
+  final String root;
+
+  @override
+  Future<String?> getApplicationDocumentsPath() async => root;
+
+  @override
+  Future<String?> getTemporaryPath() async => root;
+}
+
+/// A valid 1×1 PNG.
+final _tinyPng = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+);

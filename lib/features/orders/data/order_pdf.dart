@@ -1,19 +1,12 @@
 import 'dart:typed_data';
 
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import '../../../core/database/app_database.dart';
 import '../../../core/formatters.dart';
+import '../../../core/pdf.dart';
 import '../../business/data/business_info.dart';
-
-const _steel = PdfColor.fromInt(0xFF263845);
-const _orange = PdfColor.fromInt(0xFFE8772E);
-const _lightGrey = PdfColor.fromInt(0xFFF1F3F5);
-
-Future<pw.Font> loadPdfFont() async =>
-    pw.Font.ttf(await rootBundle.load('assets/fonts/Cairo.ttf'));
 
 String orderDocumentTitle(OrderSummary s) {
   if (s.order.status == OrderStatus.quotation) return 'عرض سعر';
@@ -41,7 +34,7 @@ Future<Uint8List> buildOrderPdf({
   final isQuotation = order.status == OrderStatus.quotation;
   final doc = pw.Document(title: '${orderDocumentTitle(summary)} ${order.id}');
 
-  pw.Widget small(String text) => pw.Text(
+  pw.Widget small(String text) => pdfText(
     text,
     style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
   );
@@ -81,9 +74,9 @@ Future<Uint8List> buildOrderPdf({
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
                   if (business.name.isNotEmpty)
-                    pw.Text(
+                    pdfText(
                       business.name,
-                      style: const pw.TextStyle(fontSize: 22, color: _steel),
+                      style: const pw.TextStyle(fontSize: 22, color: pdfSteel),
                     ),
                   if (business.phone.isNotEmpty) small('ت: ${business.phone}'),
                   if (business.address.isNotEmpty) small(business.address),
@@ -96,19 +89,19 @@ Future<Uint8List> buildOrderPdf({
                 vertical: 8,
               ),
               decoration: const pw.BoxDecoration(
-                color: _orange,
+                color: pdfOrange,
                 borderRadius: pw.BorderRadius.all(pw.Radius.circular(6)),
               ),
               child: pw.Column(
                 children: [
-                  pw.Text(
+                  pdfText(
                     orderDocumentTitle(summary),
                     style: const pw.TextStyle(
                       fontSize: 18,
                       color: PdfColors.white,
                     ),
                   ),
-                  pw.Text(
+                  pdfText(
                     'رقم ${order.id}',
                     style: const pw.TextStyle(color: PdfColors.white),
                   ),
@@ -117,7 +110,7 @@ Future<Uint8List> buildOrderPdf({
             ),
           ],
         ),
-        pw.Divider(color: _steel, thickness: 2, height: 24),
+        pw.Divider(color: pdfSteel, thickness: 2, height: 24),
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -125,7 +118,7 @@ Future<Uint8List> buildOrderPdf({
             pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Text(
+                pdfText(
                   '${order.kind == OrderKind.sale ? 'السادة' : 'المورد'}: '
                   '${party.name}',
                   style: const pw.TextStyle(fontSize: 14),
@@ -134,7 +127,7 @@ Future<Uint8List> buildOrderPdf({
                 if (party.city != null) small(party.city!),
               ],
             ),
-            pw.Text('التاريخ: ${formatShortDate(order.date)}'),
+            pdfText('التاريخ: ${formatShortDate(order.date)}'),
           ],
         ),
         pw.SizedBox(height: 16),
@@ -168,13 +161,13 @@ Future<Uint8List> buildOrderPdf({
             horizontal: 6,
             vertical: 1,
           ),
-          headerDecoration: const pw.BoxDecoration(color: _steel),
+          headerDecoration: const pw.BoxDecoration(color: pdfSteel),
           rowDecoration: const pw.BoxDecoration(
             border: pw.Border(
               bottom: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
             ),
           ),
-          oddRowDecoration: const pw.BoxDecoration(color: _lightGrey),
+          oddRowDecoration: const pw.BoxDecoration(color: pdfLightGrey),
           border: null,
           cellAlignment: pw.Alignment.centerRight,
           headerAlignment: pw.Alignment.centerRight,
@@ -194,7 +187,7 @@ Future<Uint8List> buildOrderPdf({
             width: 220,
             padding: const pw.EdgeInsets.all(10),
             decoration: pw.BoxDecoration(
-              border: pw.Border.all(color: _steel),
+              border: pw.Border.all(color: pdfSteel),
               borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
             ),
             child: pw.Column(
@@ -214,7 +207,7 @@ Future<Uint8List> buildOrderPdf({
         ),
         if (order.notes != null) ...[
           pw.SizedBox(height: 16),
-          pw.Text('ملاحظات: ${order.notes}'),
+          pdfText('ملاحظات: ${order.notes}'),
         ],
       ],
     ),
@@ -222,15 +215,16 @@ Future<Uint8List> buildOrderPdf({
   return doc.save();
 }
 
-List<String> _rtl(List<String> cells) => cells.reversed.toList();
+List<String> _rtl(List<String> cells) =>
+    cells.reversed.map(fixArabicSpacing).toList();
 
 pw.Widget _totalRow(String label, String value, double size) => pw.Padding(
   padding: const pw.EdgeInsets.symmetric(vertical: 2),
   child: pw.Row(
     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
     children: [
-      pw.Text(label, style: pw.TextStyle(fontSize: size)),
-      pw.Text(value, style: pw.TextStyle(fontSize: size)),
+      pdfText(label, style: pw.TextStyle(fontSize: size)),
+      pdfText(value, style: pw.TextStyle(fontSize: size)),
     ],
   ),
 );

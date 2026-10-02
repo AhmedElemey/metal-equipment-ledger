@@ -8,6 +8,8 @@ import '../../../core/formatters.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/section_header.dart';
+import '../../cheques/presentation/cheques_screen.dart';
+import '../../items/data/items_providers.dart';
 import '../../orders/data/orders_providers.dart';
 import '../../orders/presentation/order_tile.dart';
 
@@ -21,6 +23,12 @@ class DashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final stats = ref.watch(dashboardProvider).value;
+    final chequesDue = ref.watch(chequesDueSoonProvider).value ?? 0;
+    final lowStock = ref.watch(
+      itemsProvider.select(
+        (items) => items.value?.where((i) => i.isLow).length ?? 0,
+      ),
+    );
     final recent =
         ref
             .watch(
@@ -77,6 +85,39 @@ class DashboardScreen extends ConsumerWidget {
                 ),
               ),
             ),
+          if (chequesDue > 0)
+            SliverToBoxAdapter(
+              child: Card(
+                color: const Color(0xFFE3F2FD),
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.request_page_outlined,
+                    color: AppColors.purchase,
+                  ),
+                  title: Text(
+                    'الشيكات: $chequesDue شيك يستحق خلال '
+                    '$chequeWarningDays أيام',
+                  ),
+                  trailing: const Icon(Icons.chevron_left),
+                  onTap: () => context.push('/cheques'),
+                ),
+              ),
+            ),
+          if (lowStock > 0)
+            SliverToBoxAdapter(
+              child: Card(
+                color: const Color(0xFFFFEBEE),
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.inventory_2_outlined,
+                    color: AppColors.danger,
+                  ),
+                  title: Text('المخزون: $lowStock صنف أوشك على النفاد'),
+                  trailing: const Icon(Icons.chevron_left),
+                  onTap: () => context.push('/items?low=1'),
+                ),
+              ),
+            ),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
@@ -108,6 +149,31 @@ class DashboardScreen extends ConsumerWidget {
               ),
             ),
           ),
+          const SliverToBoxAdapter(child: SectionHeader(title: 'أدوات')),
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            sliver: SliverGrid.count(
+              crossAxisCount: 3,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+              childAspectRatio: 1.15,
+              children: const [
+                _ToolTile(Icons.inventory_2_outlined, 'المخزون', '/items'),
+                _ToolTile(
+                  Icons.notifications_active_outlined,
+                  'التحصيل',
+                  '/collections',
+                ),
+                _ToolTile(Icons.money_off_outlined, 'المصروفات', '/expenses'),
+                _ToolTile(
+                  Icons.bar_chart_outlined,
+                  'التقرير الشهري',
+                  '/report',
+                ),
+                _ToolTile(Icons.request_page_outlined, 'الشيكات', '/cheques'),
+              ],
+            ),
+          ),
           SliverToBoxAdapter(
             child: SectionHeader(
               title:
@@ -127,6 +193,33 @@ class DashboardScreen extends ConsumerWidget {
             itemBuilder: (_, i) => OrderTile(summary: recent[i]),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ToolTile extends StatelessWidget {
+  const _ToolTile(this.icon, this.label, this.route);
+
+  final IconData icon;
+  final String label;
+  final String route;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => context.push(route),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 32, color: AppColors.steel),
+            const SizedBox(height: 6),
+            Text(label, textAlign: TextAlign.center),
+          ],
+        ),
       ),
     );
   }

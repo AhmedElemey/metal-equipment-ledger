@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/database/app_database.dart';
 import '../../../core/database/database_provider.dart';
 import '../../../core/formatters.dart';
 import '../../../core/theme.dart';
@@ -27,24 +28,96 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _busy = false;
 
-  Future<void> _run(Future<void> Function() action, String success) async {
+  /// Runs [action] with a busy state; shows the message it returns.
+  Future<void> _run(Future<String?> Function() action) async {
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
+    void show(String text) =>
+        messenger.showSnackBar(SnackBar(content: Text(text)));
     try {
-      await action();
-      messenger.showSnackBar(SnackBar(content: Text(success)));
+      final message = await action();
+      if (message != null) show(message);
     } on BackupNotConnected {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('اربط حساب جوجل درايف أولاً')),
-      );
+      show('اربط حساب جوجل درايف أولاً');
+    } on NothingToBackUp {
+      show('لا توجد بيانات على التليفون لرفعها بعد');
+    } on NoBackupFound {
+      show('لا توجد نسخة احتياطية على جوجل درايف');
+    } on InvalidBackup {
+      show('ملف النسخة الاحتياطية تالف — لم يتم تغيير أي بيانات');
+    } on BackupTooNew {
+      show('النسخة من إصدار أحدث للتطبيق — حدّث التطبيق أولاً');
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('حدث خطأ: $e')));
+      show('حدث خطأ: $e');
     } finally {
       if (mounted) {
         setState(() => _busy = false);
         ref.invalidate(backupStatusProvider);
       }
     }
+  }
+
+  Future<String?> _connect() async {
+    await DriveBackup.connect();
+    // A new or reset phone: offer the existing backup before anything else.
+    if ((await ref.read(databaseProvider).counts()).parties == 0) {
+      final backup = await DriveBackup.findBackup();
+      if (backup != null) return _confirmAndRestore(backup);
+    }
+    return 'تم الربط بنجاح';
+  }
+
+  Future<String?> _restore() async {
+    final backup = await DriveBackup.findBackup();
+    if (backup == null) throw const NoBackupFound();
+    return _confirmAndRestore(backup);
+  }
+
+  Future<String?> _confirmAndRestore(DriveBackupFile backup) async {
+    final db = ref.read(databaseProvider);
+    final local = await db.counts();
+    if (!mounted) return null;
+    final hasData = local.parties > 0;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('استعادة البيانات من جوجل درايف'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('آخر نسخة على درايف: ${formatDateTime(backup.modifiedAt)}'),
+            const SizedBox(height: 12),
+            if (hasData)
+              Text(
+                'تحذير: سيتم مسح كل البيانات الموجودة على هذا التليفون '
+                '(${local.parties} عميل/مورد و ${local.orders} طلب) '
+                'واستبدالها بالنسخة الموجودة على درايف.',
+                style: const TextStyle(color: AppColors.danger),
+              )
+            else
+              const Text('هل تريد استعادة بياناتك على هذا التليفون؟'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            style: hasData
+                ? FilledButton.styleFrom(backgroundColor: AppColors.danger)
+                : null,
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(hasData ? 'مسح واستعادة' : 'استعادة'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return null;
+    final restored = await DriveBackup.restore(db);
+    return 'تمت الاستعادة: ${restored.parties} عميل/مورد '
+        'و ${restored.orders} طلب';
   }
 
   @override
@@ -86,7 +159,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   Text(
                     'كل يوم بعد الساعة $backupHour:00 يتم تحديث ملف Excel '
                     'بكل البيانات في مجلد "${DriveBackup.folderName}" '
-                    'على جوجل درايف، مع نسخة كاملة من قاعدة البيانات.',
+                    'على جوجل درايف، مع نسخة كاملة من البيانات والملاحظات '
+                    'الصوتية. على تليفون جديد: اربط نفس الحساب ثم اضغط '
+                    '"استعادة".',
                     style: const TextStyle(color: Colors.black54),
                   ),
                   const SizedBox(height: 8),
@@ -98,9 +173,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   const SizedBox(height: 16),
                   if (!connected)
                     FilledButton.icon(
-                      onPressed: _busy
-                          ? null
-                          : () => _run(DriveBackup.connect, 'تم الربط بنجاح'),
+                      onPressed: _busy ? null : () => _run(_connect),
                       icon: const Icon(Icons.add_to_drive),
                       label: const Text('ربط حساب جوجل درايف'),
                     )
@@ -108,10 +181,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     FilledButton.icon(
                       onPressed: _busy
                           ? null
-                          : () => _run(
-                              () => DriveBackup.run(ref.read(databaseProvider)),
-                              'تم رفع النسخة الاحتياطية',
-                            ),
+                          : () => _run(() async {
+                              await DriveBackup.run(ref.read(databaseProvider));
+                              return 'تم رفع النسخة الاحتياطية';
+                            }),
                       icon: _busy
                           ? const SizedBox.square(
                               dimension: 18,
@@ -120,11 +193,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           : const Icon(Icons.backup),
                       label: const Text('نسخ احتياطي الآن'),
                     ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: _busy ? null : () => _run(_restore),
+                      icon: const Icon(Icons.settings_backup_restore),
+                      label: const Text('استعادة من جوجل درايف'),
+                    ),
                     TextButton(
                       onPressed: _busy
                           ? null
-                          : () =>
-                                _run(DriveBackup.disconnect, 'تم إلغاء الربط'),
+                          : () => _run(() async {
+                              await DriveBackup.disconnect();
+                              return 'تم إلغاء الربط';
+                            }),
                       child: const Text('إلغاء ربط الحساب'),
                     ),
                   ],

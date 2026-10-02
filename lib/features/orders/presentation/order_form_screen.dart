@@ -7,7 +7,11 @@ import '../../../core/database/app_database.dart';
 import '../../../core/database/database_provider.dart';
 import '../../../core/formatters.dart';
 import '../../../core/widgets/total_row.dart';
+import '../../items/data/items_providers.dart';
+import '../../items/presentation/item_name_field.dart';
+import '../../items/presentation/item_price_hint.dart';
 import '../../parties/data/parties_providers.dart';
+import '../../weight/presentation/weight_calculator_dialog.dart';
 
 /// The data needed to edit an existing order.
 typedef OrderDraft = ({Order order, List<OrderItem> items});
@@ -43,6 +47,7 @@ class _ItemControllers {
   final TextEditingController quantity;
   final TextEditingController unit;
   final TextEditingController price;
+  final nameFocus = FocusNode();
 
   int get lineTotal {
     final q = parseNumber(quantity.text) ?? 0;
@@ -55,6 +60,7 @@ class _ItemControllers {
     quantity.dispose();
     unit.dispose();
     price.dispose();
+    nameFocus.dispose();
   }
 }
 
@@ -168,6 +174,23 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
   @override
   Widget build(BuildContext context) {
     final parties = ref.watch(partiesProvider('')).value ?? const <Party>[];
+    final partyId = _partyId;
+    final partyPrices = partyId == null
+        ? const <String, PartyItemPrice>{}
+        : ref
+                  .watch(
+                    partyItemPricesProvider((
+                      partyId: partyId,
+                      kind: _kind,
+                      excludeOrderId: widget.existing?.order.id,
+                    )),
+                  )
+                  .value ??
+              const <String, PartyItemPrice>{};
+    final itemsByName = {
+      for (final i in ref.watch(itemsProvider).value ?? const <ItemSummary>[])
+        i.name: i,
+    };
     final total = _total;
     final isNew = widget.existing == null;
     final quotation = _isQuotation;
@@ -248,6 +271,9 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
               _ItemFields(
                 key: ObjectKey(_items[i]),
                 controllers: _items[i],
+                kind: _kind,
+                itemsByName: itemsByName,
+                partyPrices: partyPrices,
                 onChanged: () => setState(() {}),
                 onRemove: _items.length > 1 ? () => _removeItem(i) : null,
               ),
@@ -321,13 +347,51 @@ class _ItemFields extends StatelessWidget {
   const _ItemFields({
     super.key,
     required this.controllers,
+    required this.kind,
+    required this.itemsByName,
+    required this.partyPrices,
     required this.onChanged,
     required this.onRemove,
   });
 
   final _ItemControllers controllers;
+  final OrderKind kind;
+
+  /// Past items and their last prices, for suggestions and hints.
+  final Map<String, ItemSummary> itemsByName;
+
+  /// The selected party's last price per item name (empty if none chosen).
+  final Map<String, PartyItemPrice> partyPrices;
   final VoidCallback onChanged;
   final VoidCallback? onRemove;
+
+  void _fillFrom(ItemSummary item) {
+    controllers.unit.text = item.unit;
+    // This party's own last price first, then the general last price.
+    final price =
+        partyPrices[item.name]?.price ??
+        (kind == OrderKind.sale ? item.lastSale : item.lastPurchase);
+    // Never overwrite a price he already typed.
+    if (price != null && controllers.price.text.trim().isEmpty) {
+      controllers.price.text = piastersToInput(price);
+    }
+    onChanged();
+  }
+
+  /// Fills the quantity with a calculated weight: in tons if the line is
+  /// already priced per ton, otherwise in kilos.
+  Future<void> _useWeight(BuildContext context) async {
+    final result = await showWeightCalculator(context);
+    if (result == null) return;
+    final inTons = controllers.unit.text.trim() == 'طن';
+    final qty = inTons ? result.kg / 1000 : result.kg;
+    controllers.quantity.text = formatQuantity(qty);
+    if (!inTons) controllers.unit.text = 'كيلو';
+    if (controllers.name.text.trim().isEmpty) {
+      controllers.name.text = result.description;
+    }
+    onChanged();
+  }
 
   String? _requiredNumber(String? v) =>
       parseNumber(v ?? '') == null ? 'مطلوب' : null;
@@ -343,15 +407,19 @@ class _ItemFields extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: TextFormField(
+                  child: ItemNameField(
                     controller: controllers.name,
-                    decoration: const InputDecoration(
-                      labelText: 'اسم الصنف *',
-                      hintText: 'مثال: صاج حديد 2 مم',
-                    ),
-                    validator: (v) =>
-                        (v == null || v.trim().isEmpty) ? 'مطلوب' : null,
+                    focusNode: controllers.nameFocus,
+                    items: itemsByName.values,
+                    partyPrices: partyPrices,
+                    kind: kind,
+                    onSelected: _fillFrom,
                   ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.scale_outlined),
+                  tooltip: 'حاسبة الوزن',
+                  onPressed: () => _useWeight(context),
                 ),
                 if (onRemove != null)
                   IconButton(
@@ -399,6 +467,34 @@ class _ItemFields extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+            // Rebuilds on its own as the name or price is typed.
+            ListenableBuilder(
+              listenable: Listenable.merge([
+                controllers.name,
+                controllers.quantity,
+                controllers.price,
+              ]),
+              builder: (_, _) {
+                final name = controllers.name.text.trim();
+                final known = itemsByName[name];
+                if (known == null) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: ItemPriceHint(
+                      item: known,
+                      kind: kind,
+                      partyPrice: partyPrices[name],
+                      enteredPrice: parseMoneyToPiasters(
+                        controllers.price.text,
+                      ),
+                      enteredQuantity: parseNumber(controllers.quantity.text),
+                    ),
+                  ),
+                );
+              },
             ),
             Align(
               alignment: AlignmentDirectional.centerEnd,

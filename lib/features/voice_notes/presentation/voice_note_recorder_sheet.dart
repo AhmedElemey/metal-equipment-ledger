@@ -49,6 +49,7 @@ class _VoiceNoteRecorderSheetState
   String? _path;
   bool _recording = false;
   bool _saved = false;
+  bool _saving = false;
 
   @override
   void dispose() {
@@ -97,7 +98,9 @@ class _VoiceNoteRecorderSheetState
 
   Future<void> _save() async {
     final path = _path;
-    if (path == null) return;
+    // One row per recording, even on a double tap.
+    if (path == null || _saving) return;
+    setState(() => _saving = true);
     await ref
         .read(databaseProvider)
         .addVoiceNote(
@@ -161,7 +164,7 @@ class _VoiceNoteRecorderSheetState
                 const SizedBox(width: 12),
                 Expanded(
                   child: FilledButton.icon(
-                    onPressed: hasRecording ? _save : null,
+                    onPressed: hasRecording && !_saving ? _save : null,
                     icon: const Icon(Icons.check),
                     label: const Text('حفظ'),
                   ),

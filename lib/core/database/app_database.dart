@@ -1,7 +1,9 @@
 import 'dart:io';
 
 import 'package:drift/drift.dart';
+import 'package:drift/native.dart';
 import 'package:drift_flutter/drift_flutter.dart';
+import 'package:sqlite3/sqlite3.dart' as raw;
 
 part 'app_database.g.dart';
 
@@ -15,6 +17,9 @@ enum OrderKind { sale, purchase }
 /// A [quotation] (عرض سعر) is a sale not yet agreed — like [cancelled], it
 /// never counts towards balances, totals or collections.
 enum OrderStatus { pending, inProgress, delivered, cancelled, quotation }
+
+/// Stored by index: only ever append new values.
+enum ChequeStatus { pending, cleared, bounced }
 
 /// [received]: money from the party to us (settles sales).
 /// [paid]: money from us to the party (settles purchases).
@@ -33,6 +38,8 @@ class Parties extends Table {
   DateTimeColumn get lastRemindedAt => dateTime().nullable()();
 }
 
+@TableIndex(name: 'orders_party', columns: {#partyId})
+@TableIndex(name: 'orders_date', columns: {#date})
 class Orders extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get partyId =>
@@ -45,6 +52,8 @@ class Orders extends Table {
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 
+@TableIndex(name: 'order_items_order', columns: {#orderId})
+@TableIndex(name: 'order_items_name', columns: {#name})
 class OrderItems extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get orderId =>
@@ -57,6 +66,8 @@ class OrderItems extends Table {
   IntColumn get unitPricePiasters => integer()();
 }
 
+@TableIndex(name: 'payments_party', columns: {#partyId})
+@TableIndex(name: 'payments_order', columns: {#orderId})
 class Payments extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get partyId =>
@@ -76,6 +87,78 @@ class Payments extends Table {
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 
+/// Manual stock corrections: an opening count or a physical count (جرد)
+/// that differs from what orders imply. Positive adds, negative removes.
+class StockAdjustments extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get itemName => text()();
+  RealColumn get quantity => real()();
+  DateTimeColumn get date => dateTime()();
+  TextColumn get note => text().nullable()();
+}
+
+/// Per-item settings. An item with a row here (or any adjustment) is
+/// "tracked": its stock is shown and its low-stock alert can fire.
+class ItemSettings extends Table {
+  TextColumn get itemName => text()();
+  TextColumn get unit => text().nullable()();
+
+  /// Alert when stock falls to or below this.
+  RealColumn get minQuantity => real().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {itemName};
+}
+
+/// A post-dated cheque. It doesn't touch any balance until it clears; then
+/// a payment is recorded and linked here (and removed if it later bounces).
+@TableIndex(name: 'cheques_due', columns: {#dueDate})
+class Cheques extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get partyId =>
+      integer().references(Parties, #id, onDelete: KeyAction.restrict)();
+
+  /// [PaymentDirection.received]: a cheque he got; [PaymentDirection.paid]:
+  /// one he wrote.
+  IntColumn get direction => intEnum<PaymentDirection>()();
+  IntColumn get amountPiasters => integer()();
+  TextColumn get number => text().nullable()();
+  TextColumn get bank => text().nullable()();
+  DateTimeColumn get dueDate => dateTime()();
+  IntColumn get status =>
+      intEnum<ChequeStatus>().withDefault(const Constant(0))();
+
+  /// The payment recorded when the cheque cleared.
+  IntColumn get paymentId => integer().nullable().references(
+    Payments,
+    #id,
+    onDelete: KeyAction.setNull,
+  )();
+  TextColumn get note => text().nullable()();
+}
+
+/// Photos attached to an order (equipment condition, delivery receipt…).
+@TableIndex(name: 'order_photos_order', columns: {#orderId})
+class OrderPhotos extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get orderId =>
+      integer().references(Orders, #id, onDelete: KeyAction.cascade)();
+
+  /// File name only — the documents directory can move between installs.
+  TextColumn get fileName => text()();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+/// Business costs not tied to an order: transport, loading, rent…
+class Expenses extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  DateTimeColumn get date => dateTime()();
+  TextColumn get category => text()();
+  IntColumn get amountPiasters => integer()();
+  TextColumn get note => text().nullable()();
+}
+
+@TableIndex(name: 'voice_notes_party', columns: {#partyId})
 class VoiceNotes extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get partyId =>
@@ -129,6 +212,88 @@ class DashboardStats {
   /// Number of parties that owe us money.
   final int debtors;
   final int openOrders;
+}
+
+typedef DataCounts = ({int parties, int orders});
+
+/// The last price one party got for an item, in piasters.
+typedef PartyItemPrice = ({int price, DateTime at});
+
+/// An item with its latest prices (in piasters) and stock.
+class ItemSummary {
+  const ItemSummary({
+    required this.name,
+    required this.unit,
+    required this.lastSale,
+    required this.lastSaleAt,
+    required this.lastPurchase,
+    required this.lastPurchaseAt,
+    required this.stock,
+    required this.tracked,
+    required this.minQuantity,
+  });
+
+  final String name;
+
+  /// The unit set for the item, else the one used in its latest order.
+  final String unit;
+  final int? lastSale;
+  final DateTime? lastSaleAt;
+  final int? lastPurchase;
+  final DateTime? lastPurchaseAt;
+
+  /// Purchases − sales (real orders) + manual adjustments.
+  final double stock;
+
+  /// True once he has counted the item or set its settings; only tracked
+  /// items show stock and raise alerts, so old history doesn't nag.
+  final bool tracked;
+  final double? minQuantity;
+
+  bool get isLow => tracked && minQuantity != null && stock <= minQuantity!;
+}
+
+/// The file isn't a backup of this app (or is damaged).
+class InvalidBackup implements Exception {
+  const InvalidBackup();
+}
+
+/// The backup was made by a newer app version — update the app first.
+class BackupTooNew implements Exception {
+  const BackupTooNew();
+}
+
+/// Estimated profit: Σ (sale price − average purchase cost) × quantity,
+/// over lines whose item has been bought before. [uncostedLines] counts
+/// lines left out because the item has no purchase price yet.
+typedef Profit = ({int profit, int uncostedLines});
+
+class MonthlyReport {
+  const MonthlyReport({
+    required this.sales,
+    required this.purchases,
+    required this.received,
+    required this.paidOut,
+    required this.expenses,
+    required this.grossProfit,
+    required this.uncostedLines,
+    required this.topClients,
+    required this.topItems,
+  });
+
+  final int sales;
+  final int purchases;
+  final int received;
+  final int paidOut;
+  final int expenses;
+  final int grossProfit;
+  final int uncostedLines;
+
+  /// Biggest clients and items by sales value this month.
+  final List<({String name, int total})> topClients;
+  final List<({String name, int total})> topItems;
+
+  int get netProfit => grossProfit - expenses;
 }
 
 /// A party that owes us money, for the collections list.
@@ -196,6 +361,21 @@ const _quotation = 4; // OrderStatus.quotation.index
 /// Orders that are real business: not cancelled and not a quotation.
 const _counts = 'o.status NOT IN ($_cancelled, $_quotation)';
 
+/// Average purchase cost per item name (piasters per unit), from all real
+/// purchase orders, weighted by quantity.
+const _avgCostCte =
+    'cost AS (SELECT i.name, '
+    'SUM(i.quantity * i.unit_price_piasters) / SUM(i.quantity) AS avg_cost '
+    'FROM order_items i JOIN orders o ON o.id = i.order_id '
+    'WHERE o.kind != $_sale AND $_counts AND i.quantity > 0 GROUP BY i.name)';
+
+/// Profit columns over `order_items i` joined to `cost c`.
+const _profitColumnsSql =
+    'COALESCE(SUM(CASE WHEN c.avg_cost IS NOT NULL THEN '
+    'CAST(ROUND(i.quantity * (i.unit_price_piasters - c.avg_cost)) AS INTEGER) '
+    'END), 0) AS profit, '
+    'COALESCE(SUM(c.avg_cost IS NULL), 0) AS uncosted';
+
 const _orderTotalSql =
     'COALESCE((SELECT SUM(CAST(ROUND(i.quantity * i.unit_price_piasters) AS INTEGER)) '
     'FROM order_items i WHERE i.order_id = o.id), 0)';
@@ -214,14 +394,27 @@ const _partyBalanceSql =
     'THEN pay.amount_piasters ELSE -pay.amount_piasters END) '
     'FROM payments pay WHERE pay.party_id = p.id), 0))';
 
-@DriftDatabase(tables: [Parties, Orders, OrderItems, Payments, VoiceNotes])
+@DriftDatabase(
+  tables: [
+    Parties,
+    Orders,
+    OrderItems,
+    Payments,
+    VoiceNotes,
+    StockAdjustments,
+    ItemSettings,
+    Expenses,
+    Cheques,
+    OrderPhotos,
+  ],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
 
   static const fileName = 'metal_ledger';
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -238,6 +431,34 @@ class AppDatabase extends _$AppDatabase {
           'paid_piasters, date, created_at FROM orders WHERE paid_piasters > 0',
         );
         await m.alterTable(TableMigration(orders)); // drops paid_piasters
+      }
+      if (from < 3) {
+        await m.createTable(stockAdjustments);
+        await m.createTable(itemSettings);
+      }
+      if (from < 4) await m.createTable(expenses);
+      if (from < 5) {
+        // Without these, every total re-scans whole tables (6 s for the
+        // home screen at 5,000 orders — see test/stress_test.dart).
+        for (final index in [
+          ordersParty,
+          ordersDate,
+          orderItemsOrder,
+          orderItemsName,
+          paymentsParty,
+          paymentsOrder,
+          voiceNotesParty,
+        ]) {
+          await m.createIndex(index);
+        }
+      }
+      if (from < 6) {
+        await m.createTable(cheques);
+        await m.createIndex(chequesDue);
+      }
+      if (from < 7) {
+        await m.createTable(orderPhotos);
+        await m.createIndex(orderPhotosOrder);
       }
     },
     beforeOpen: (details) async {
@@ -280,7 +501,8 @@ class AppDatabase extends _$AppDatabase {
   Future<bool> hasHistory(int partyId) async {
     final row = await customSelect(
       'SELECT EXISTS(SELECT 1 FROM orders WHERE party_id = ?1) '
-      'OR EXISTS(SELECT 1 FROM payments WHERE party_id = ?1) AS has',
+      'OR EXISTS(SELECT 1 FROM payments WHERE party_id = ?1) '
+      'OR EXISTS(SELECT 1 FROM cheques WHERE party_id = ?1) AS has',
       variables: [Variable.withInt(partyId)],
     ).getSingle();
     return row.read<bool>('has');
@@ -486,6 +708,301 @@ class AppDatabase extends _$AppDatabase {
   Future<void> deleteOrder(int id) =>
       (delete(orders)..where((o) => o.id.equals(id))).go();
 
+  /// Every item (from real orders, stock counts or settings) with its last
+  /// sale and purchase price and current stock, most recently used first.
+  Stream<List<ItemSummary>> watchItems() {
+    return customSelect(
+      'WITH lines AS ('
+      'SELECT i.name, i.unit, i.quantity, i.unit_price_piasters AS price, '
+      'o.kind, o.date, o.id AS oid, i.id AS iid '
+      'FROM order_items i JOIN orders o ON o.id = i.order_id WHERE $_counts), '
+      'ranked AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY name, kind '
+      'ORDER BY date DESC, oid DESC, iid DESC) AS rn FROM lines), '
+      'names AS (SELECT name FROM lines '
+      'UNION SELECT item_name FROM stock_adjustments '
+      'UNION SELECT item_name FROM item_settings) '
+      'SELECT n.name, '
+      '(SELECT price FROM ranked WHERE name = n.name AND kind = $_sale AND rn = 1) AS last_sale, '
+      '(SELECT date FROM ranked WHERE name = n.name AND kind = $_sale AND rn = 1) AS last_sale_at, '
+      '(SELECT price FROM ranked WHERE name = n.name AND kind != $_sale AND rn = 1) AS last_purchase, '
+      '(SELECT date FROM ranked WHERE name = n.name AND kind != $_sale AND rn = 1) AS last_purchase_at, '
+      "COALESCE((SELECT unit FROM item_settings WHERE item_name = n.name), "
+      "(SELECT unit FROM ranked WHERE name = n.name AND rn = 1 ORDER BY date DESC LIMIT 1), 'قطعة') AS unit, "
+      'COALESCE((SELECT SUM(CASE WHEN kind = $_sale THEN -quantity ELSE quantity END) '
+      'FROM lines WHERE name = n.name), 0) + '
+      'COALESCE((SELECT SUM(quantity) FROM stock_adjustments WHERE item_name = n.name), 0) AS stock, '
+      '(EXISTS(SELECT 1 FROM stock_adjustments WHERE item_name = n.name) OR '
+      'EXISTS(SELECT 1 FROM item_settings WHERE item_name = n.name)) AS tracked, '
+      '(SELECT min_quantity FROM item_settings WHERE item_name = n.name) AS min_quantity, '
+      'MAX(COALESCE((SELECT MAX(date) FROM lines WHERE name = n.name), 0), '
+      'COALESCE((SELECT MAX(date) FROM stock_adjustments WHERE item_name = n.name), 0)) AS last_used '
+      'FROM names n ORDER BY last_used DESC, n.name',
+      readsFrom: {orders, orderItems, stockAdjustments, itemSettings},
+    ).watch().map(
+      (rows) => [
+        for (final r in rows)
+          ItemSummary(
+            name: r.read<String>('name'),
+            unit: r.read<String>('unit'),
+            lastSale: r.readNullable<int>('last_sale'),
+            lastSaleAt: r.readNullable<DateTime>('last_sale_at'),
+            lastPurchase: r.readNullable<int>('last_purchase'),
+            lastPurchaseAt: r.readNullable<DateTime>('last_purchase_at'),
+            stock: r.read<double>('stock'),
+            tracked: r.read<bool>('tracked'),
+            minQuantity: r.readNullable<double>('min_quantity'),
+          ),
+      ],
+    );
+  }
+
+  /// Records a physical count: adds the difference to reach [actual].
+  Future<void> recordStockCount(
+    String itemName, {
+    required double current,
+    required double actual,
+    required DateTime date,
+    String? note,
+  }) => into(stockAdjustments).insert(
+    StockAdjustmentsCompanion.insert(
+      itemName: itemName,
+      quantity: actual - current,
+      date: date,
+      note: Value(note),
+    ),
+  );
+
+  Future<void> saveItemSettings(
+    String itemName, {
+    String? unit,
+    double? minQuantity,
+  }) => into(itemSettings).insertOnConflictUpdate(
+    ItemSettingsCompanion.insert(
+      itemName: itemName,
+      unit: Value(unit),
+      minQuantity: Value(minQuantity),
+    ),
+  );
+
+  /// The last price [partyId] got for each item in real orders of [kind],
+  /// keyed by item name. [excludeOrderId] leaves out the order being edited.
+  Stream<Map<String, PartyItemPrice>> watchPartyItemPrices({
+    required int partyId,
+    required OrderKind kind,
+    int? excludeOrderId,
+  }) {
+    return customSelect(
+      'SELECT name, price, date FROM ('
+      'SELECT i.name, i.unit_price_piasters AS price, o.date, '
+      'ROW_NUMBER() OVER (PARTITION BY i.name '
+      'ORDER BY o.date DESC, o.id DESC, i.id DESC) AS rn '
+      'FROM order_items i JOIN orders o ON o.id = i.order_id '
+      'WHERE o.party_id = ?1 AND o.kind = ?2 AND o.id != ?3 AND $_counts'
+      ') WHERE rn = 1',
+      variables: [
+        Variable.withInt(partyId),
+        Variable.withInt(kind.index),
+        Variable.withInt(excludeOrderId ?? -1),
+      ],
+      readsFrom: {orders, orderItems},
+    ).watch().map(
+      (rows) => {
+        for (final r in rows)
+          r.read<String>('name'): (
+            price: r.read<int>('price'),
+            at: r.read<DateTime>('date'),
+          ),
+      },
+    );
+  }
+
+  // ----------------------------------------------------------------- profit
+
+  /// Estimated profit of one sale order.
+  Stream<Profit> watchOrderProfit(int orderId) {
+    return customSelect(
+      'WITH $_avgCostCte SELECT $_profitColumnsSql '
+      'FROM order_items i LEFT JOIN cost c ON c.name = i.name '
+      'WHERE i.order_id = ?',
+      variables: [Variable.withInt(orderId)],
+      readsFrom: {orders, orderItems},
+    ).watchSingle().map(
+      (r) => (
+        profit: r.read<int>('profit'),
+        uncostedLines: r.read<int>('uncosted'),
+      ),
+    );
+  }
+
+  /// Totals for orders, payments and expenses dated within [from, to).
+  Stream<MonthlyReport> watchMonthlyReport(DateTime from, DateTime to) {
+    final range = [Variable.withDateTime(from), Variable.withDateTime(to)];
+    const inRange = 'o.date >= ?1 AND o.date < ?2';
+    final totals = customSelect(
+      'WITH $_avgCostCte SELECT '
+      'COALESCE((SELECT SUM($_orderTotalSql) FROM orders o '
+      'WHERE o.kind = $_sale AND $_counts AND $inRange), 0) AS sales, '
+      'COALESCE((SELECT SUM($_orderTotalSql) FROM orders o '
+      'WHERE o.kind != $_sale AND $_counts AND $inRange), 0) AS purchases, '
+      'COALESCE((SELECT SUM(amount_piasters) FROM payments '
+      'WHERE direction = $_received AND date >= ?1 AND date < ?2), 0) AS received, '
+      'COALESCE((SELECT SUM(amount_piasters) FROM payments '
+      'WHERE direction != $_received AND date >= ?1 AND date < ?2), 0) AS paid_out, '
+      'COALESCE((SELECT SUM(amount_piasters) FROM expenses '
+      'WHERE date >= ?1 AND date < ?2), 0) AS expenses, '
+      'p.profit, p.uncosted '
+      'FROM (SELECT $_profitColumnsSql FROM order_items i '
+      'JOIN orders o ON o.id = i.order_id LEFT JOIN cost c ON c.name = i.name '
+      'WHERE o.kind = $_sale AND $_counts AND $inRange) p',
+      variables: range,
+      // Includes parties so a renamed client refreshes the top list too.
+      readsFrom: {orders, orderItems, payments, expenses, parties},
+    ).watchSingle();
+    final topClients = customSelect(
+      'SELECT p.name AS name, SUM($_orderTotalSql) AS total FROM orders o '
+      'JOIN parties p ON p.id = o.party_id '
+      'WHERE o.kind = $_sale AND $_counts AND $inRange '
+      'GROUP BY p.id ORDER BY total DESC LIMIT 5',
+      variables: range,
+    );
+    final topItems = customSelect(
+      'SELECT i.name AS name, '
+      'SUM(CAST(ROUND(i.quantity * i.unit_price_piasters) AS INTEGER)) AS total '
+      'FROM order_items i JOIN orders o ON o.id = i.order_id '
+      'WHERE o.kind = $_sale AND $_counts AND $inRange '
+      'GROUP BY i.name ORDER BY total DESC LIMIT 5',
+      variables: range,
+    );
+    List<({String name, int total})> ranked(List<QueryRow> rows) => [
+      for (final r in rows)
+        (name: r.read<String>('name'), total: r.read<int>('total')),
+    ];
+    // The totals query watches every table the report uses; each emission
+    // re-reads the two top-5 lists.
+    return totals.asyncMap((t) async {
+      return MonthlyReport(
+        sales: t.read<int>('sales'),
+        purchases: t.read<int>('purchases'),
+        received: t.read<int>('received'),
+        paidOut: t.read<int>('paid_out'),
+        expenses: t.read<int>('expenses'),
+        grossProfit: t.read<int>('profit'),
+        uncostedLines: t.read<int>('uncosted'),
+        topClients: ranked(await topClients.get()),
+        topItems: ranked(await topItems.get()),
+      );
+    });
+  }
+
+  // ----------------------------------------------------------------- photos
+
+  Stream<List<OrderPhoto>> watchOrderPhotos(int orderId) =>
+      (select(orderPhotos)
+            ..where((p) => p.orderId.equals(orderId))
+            ..orderBy([(p) => OrderingTerm.asc(p.id)]))
+          .watch();
+
+  Future<int> addOrderPhoto(int orderId, String fileName) => into(
+    orderPhotos,
+  ).insert(OrderPhotosCompanion.insert(orderId: orderId, fileName: fileName));
+
+  Future<void> deleteOrderPhoto(int id) =>
+      (delete(orderPhotos)..where((p) => p.id.equals(id))).go();
+
+  // ---------------------------------------------------------------- cheques
+
+  /// Cheques with their party's name; pending ones by due date first.
+  Stream<List<({Cheque cheque, String partyName})>> watchCheques() {
+    final q =
+        select(cheques)
+            .join([innerJoin(parties, parties.id.equalsExp(cheques.partyId))])
+          ..orderBy([
+            OrderingTerm.asc(cheques.status),
+            OrderingTerm.asc(cheques.dueDate),
+          ]);
+    return q.watch().map(
+      (rows) => [
+        for (final r in rows)
+          (cheque: r.readTable(cheques), partyName: r.readTable(parties).name),
+      ],
+    );
+  }
+
+  /// Pending cheques due on or before [until].
+  Stream<int> watchChequesDueCount(DateTime until) {
+    final count = cheques.id.count();
+    final q = selectOnly(cheques)
+      ..addColumns([count])
+      ..where(cheques.status.equalsValue(ChequeStatus.pending))
+      ..where(cheques.dueDate.isSmallerOrEqualValue(until));
+    return q.map((r) => r.read(count) ?? 0).watchSingle();
+  }
+
+  Future<int> addCheque(ChequesCompanion entry) => into(cheques).insert(entry);
+
+  /// Moves a cheque to [status], keeping its payment in step: clearing
+  /// records a payment dated [today]; any other status removes it.
+  Future<void> setChequeStatus(int id, ChequeStatus status, DateTime today) {
+    return transaction(() async {
+      final c = await (select(
+        cheques,
+      )..where((c) => c.id.equals(id))).getSingle();
+      if (c.status == status) return;
+      final oldPayment = c.paymentId;
+      int? paymentId;
+      if (status == ChequeStatus.cleared) {
+        paymentId = await into(payments).insert(
+          PaymentsCompanion.insert(
+            partyId: c.partyId,
+            direction: c.direction,
+            amountPiasters: c.amountPiasters,
+            date: today,
+            note: Value(c.number == null ? 'شيك' : 'شيك رقم ${c.number}'),
+          ),
+        );
+      }
+      await (update(cheques)..where((c) => c.id.equals(id))).write(
+        ChequesCompanion(status: Value(status), paymentId: Value(paymentId)),
+      );
+      if (oldPayment != null) {
+        await (delete(payments)..where((p) => p.id.equals(oldPayment))).go();
+      }
+    });
+  }
+
+  /// Deletes a cheque and the payment it created, if any.
+  Future<void> deleteCheque(int id) {
+    return transaction(() async {
+      final c = await (select(
+        cheques,
+      )..where((c) => c.id.equals(id))).getSingle();
+      await (delete(cheques)..where((c) => c.id.equals(id))).go();
+      final paymentId = c.paymentId;
+      if (paymentId != null) {
+        await (delete(payments)..where((p) => p.id.equals(paymentId))).go();
+      }
+    });
+  }
+
+  // --------------------------------------------------------------- expenses
+
+  /// Expenses dated within [from, to), newest first.
+  Stream<List<Expense>> watchExpenses(DateTime from, DateTime to) =>
+      (select(expenses)
+            ..where((e) => e.date.isBiggerOrEqualValue(from))
+            ..where((e) => e.date.isSmallerThanValue(to))
+            ..orderBy([
+              (e) => OrderingTerm.desc(e.date),
+              (e) => OrderingTerm.desc(e.id),
+            ]))
+          .watch();
+
+  Future<int> addExpense(ExpensesCompanion entry) =>
+      into(expenses).insert(entry);
+
+  Future<void> deleteExpense(int id) =>
+      (delete(expenses)..where((e) => e.id.equals(id))).go();
+
   // --------------------------------------------------------------- payments
 
   Future<int> addPayment(PaymentsCompanion entry) =>
@@ -555,6 +1072,87 @@ class AppDatabase extends _$AppDatabase {
       (delete(voiceNotes)..where((v) => v.id.equals(id))).go();
 
   // ----------------------------------------------------------------- backup
+
+  Future<DataCounts> counts() async {
+    final row = await customSelect(
+      'SELECT (SELECT COUNT(*) FROM parties) AS parties, '
+      '(SELECT COUNT(*) FROM orders) AS orders',
+    ).getSingle();
+    return (parties: row.read<int>('parties'), orders: row.read<int>('orders'));
+  }
+
+  /// Replaces every row with the contents of the backup file [backup].
+  ///
+  /// Works on the live connection (no file swap), so open screens refresh
+  /// by themselves. The backup is first brought to the current schema by
+  /// opening it with this app's migrations; [backup] is modified by that.
+  Future<DataCounts> replaceAllFrom(File backup) async {
+    _checkBackup(backup);
+    final upgraded = AppDatabase(NativeDatabase(backup));
+    try {
+      await upgraded.customSelect('SELECT 1').get(); // runs migrations
+    } finally {
+      await upgraded.close();
+    }
+
+    // Children first when deleting, parents first when inserting.
+    final ordered = <TableInfo>[
+      parties,
+      orders,
+      orderItems,
+      payments,
+      voiceNotes,
+      stockAdjustments,
+      itemSettings,
+      expenses,
+      cheques,
+      orderPhotos,
+    ];
+    await customStatement('ATTACH DATABASE ? AS backup', [backup.path]);
+    try {
+      await transaction(() async {
+        for (final t in ordered.reversed) {
+          await customStatement('DELETE FROM main.${t.actualTableName}');
+        }
+        for (final t in ordered) {
+          final cols = t.$columns.map((c) => '"${c.name}"').join(', ');
+          await customStatement(
+            'INSERT INTO main.${t.actualTableName} ($cols) '
+            'SELECT $cols FROM backup.${t.actualTableName}',
+          );
+        }
+      });
+    } finally {
+      await customStatement('DETACH DATABASE backup');
+    }
+    markTablesUpdated(allTables);
+    return counts();
+  }
+
+  /// Rejects files that aren't a readable backup of this app.
+  void _checkBackup(File file) {
+    final int version;
+    try {
+      final db = raw.sqlite3.open(file.path, mode: raw.OpenMode.readOnly);
+      try {
+        final ok = db.select('PRAGMA quick_check').first.columnAt(0) == 'ok';
+        final tables = db
+            .select("SELECT name FROM sqlite_master WHERE type = 'table'")
+            .map((r) => r.columnAt(0) as String)
+            .toSet();
+        if (!ok || !tables.containsAll(['parties', 'orders', 'order_items'])) {
+          throw const InvalidBackup();
+        }
+        version = db.userVersion;
+      } finally {
+        db.close();
+      }
+    } on raw.SqliteException {
+      throw const InvalidBackup();
+    }
+    if (version < 1) throw const InvalidBackup();
+    if (version > schemaVersion) throw const BackupTooNew();
+  }
 
   /// Writes a consistent snapshot of the live database to [target].
   Future<void> snapshotTo(File target) async {
