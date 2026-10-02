@@ -25,7 +25,8 @@ class MonthSwitcher extends StatelessWidget {
       children: [
         IconButton(
           tooltip: 'الشهر السابق',
-          icon: const Icon(Icons.chevron_right),
+          // Mirrors in RTL: chevron_left is "back", chevron_right "forward".
+          icon: const Icon(Icons.chevron_left),
           onPressed: () => onChanged(DateTime(month.year, month.month - 1)),
         ),
         Text(
@@ -34,7 +35,7 @@ class MonthSwitcher extends StatelessWidget {
         ),
         IconButton(
           tooltip: 'الشهر التالي',
-          icon: const Icon(Icons.chevron_left),
+          icon: const Icon(Icons.chevron_right),
           onPressed: isCurrent
               ? null
               : () => onChanged(DateTime(month.year, month.month + 1)),

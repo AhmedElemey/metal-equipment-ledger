@@ -83,6 +83,20 @@ class _FakeDrive implements DriveBackupActions {
 void main() {
   setUpAppTests();
 
+  testWidgets('visiting both tabs with "+" buttons, then opening a page, '
+      'does not crash', (tester) async {
+    // Tabs stay alive side by side; two floating buttons with the same hero
+    // tag in one route used to throw during the page transition.
+    await pumpApp(tester, location: '/orders');
+    await tester.tap(find.text('العملاء'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('إضافة'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('إضافة عميل / مورد'), findsOneWidget);
+    await unmountApp(tester);
+  });
+
   group('editing', () {
     testWidgets('edit an order: type locked, new price saved', (tester) async {
       final db = await _emptyDb(tester);
