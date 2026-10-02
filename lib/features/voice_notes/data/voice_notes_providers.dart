@@ -35,23 +35,32 @@ Future<void> deleteVoiceNote(AppDatabase db, VoiceNote note) async {
 }
 
 /// Plays one voice note at a time. State is the id of the playing note.
+///
+/// The native player is created on the first play, not when a list of
+/// notes is merely shown.
 class VoiceNotePlayer extends Notifier<int?> {
   AudioPlayer? _player;
+  StreamSubscription<void>? _completeSub;
 
   @override
   int? build() {
-    final player = AudioPlayer();
-    final sub = player.onPlayerComplete.listen((_) => state = null);
     ref.onDispose(() {
-      unawaited(sub.cancel());
-      unawaited(player.dispose());
+      unawaited(_completeSub?.cancel());
+      unawaited(_player?.dispose());
     });
-    _player = player;
     return null;
   }
 
+  AudioPlayer _playerOrCreate() {
+    final existing = _player;
+    if (existing != null) return existing;
+    final player = AudioPlayer();
+    _completeSub = player.onPlayerComplete.listen((_) => state = null);
+    return _player = player;
+  }
+
   Future<void> toggle(VoiceNote note) async {
-    final player = _player!;
+    final player = _playerOrCreate();
     if (state == note.id) {
       await player.stop();
       state = null;

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:http/http.dart' as http;
@@ -404,6 +405,24 @@ abstract final class DriveBackup {
     }
   }
 }
+
+/// The Drive actions the settings screen uses, behind a provider so tests
+/// can replace them (Google sign-in can't run in tests).
+class DriveBackupActions {
+  const DriveBackupActions();
+
+  Future<bool> isConnected() => DriveBackup.isConnected();
+  Future<DateTime?> lastBackupAt() => DriveBackup.lastBackupAt();
+  Future<void> connect() => DriveBackup.connect();
+  Future<void> disconnect() => DriveBackup.disconnect();
+  Future<void> backUp(AppDatabase db) => DriveBackup.run(db);
+  Future<DriveBackupFile?> findBackup() => DriveBackup.findBackup();
+  Future<DataCounts> restore(AppDatabase db) => DriveBackup.restore(db);
+}
+
+final driveBackupProvider = Provider<DriveBackupActions>(
+  (ref) => const DriveBackupActions(),
+);
 
 class _BearerClient extends http.BaseClient {
   _BearerClient(this._token);

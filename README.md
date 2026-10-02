@@ -79,7 +79,17 @@ flutter test test/stress_test.dart                     # 5,000 orders: correctne
 
 `stress_test.dart` builds a random but repeatable data set (500 parties, 5,000 orders, 3,000 payments). It checks every balance, statement, stock level, last price and monthly profit against an independent calculation in plain Dart, and fails if a main query exceeds its time budget. It found the missing indexes that made the home screen take 6 s; it now takes about 25 ms.
 
+Widget tests run the whole app on a phone-sized screen (`test/support.dart` has the helpers). Fakes stand in for Google Drive, the microphone, the documents folder and the call/WhatsApp launcher, so the screens around them are tested too. About 83% of the app's code runs in tests. What only a real phone can check is listed under "Before release".
+
 PDF layout was checked by rendering pages to images (`PDF_OUT=<dir> flutter test test/order_pdf_test.dart`).
+
+## Before release (on a real phone)
+
+- Google sign-in, nightly Drive backup, and restore on a second phone (voice note + photo come back)
+- Camera/gallery photos; recording and playing a voice note
+- Sharing an invoice PDF and the monthly report; call and WhatsApp buttons
+- Installing over the previous version with real data (balances unchanged)
+- Speed and layout on his phone and font size
 
 ## Restore on a new phone
 

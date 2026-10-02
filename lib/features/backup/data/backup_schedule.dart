@@ -21,13 +21,20 @@ bool isBackupDue(DateTime? lastBackup, DateTime now) {
 }
 
 /// Runs the backup if it's due and Drive is connected. Never throws.
-Future<bool> backupIfDue(AppDatabase db) async {
+///
+/// Returns false only when WorkManager should retry later. [drive] and
+/// [now] are replaceable for tests.
+Future<bool> backupIfDue(
+  AppDatabase db, {
+  DriveBackupActions drive = const DriveBackupActions(),
+  DateTime? now,
+}) async {
   try {
-    if (!await DriveBackup.isConnected()) return true;
-    if (!isBackupDue(await DriveBackup.lastBackupAt(), DateTime.now())) {
+    if (!await drive.isConnected()) return true;
+    if (!isBackupDue(await drive.lastBackupAt(), now ?? DateTime.now())) {
       return true;
     }
-    await DriveBackup.run(db);
+    await drive.backUp(db);
     return true;
   } on NothingToBackUp {
     return true; // nothing to do — don't make WorkManager retry

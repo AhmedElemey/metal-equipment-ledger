@@ -11,12 +11,15 @@ import '../data/drive_backup.dart';
 
 typedef BackupStatus = ({bool connected, DateTime? lastAt});
 
-final backupStatusProvider = FutureProvider.autoDispose<BackupStatus>(
-  (ref) async => (
-    connected: await DriveBackup.isConnected(),
-    lastAt: await DriveBackup.lastBackupAt(),
-  ),
-);
+final backupStatusProvider = FutureProvider.autoDispose<BackupStatus>((
+  ref,
+) async {
+  final drive = ref.watch(driveBackupProvider);
+  return (
+    connected: await drive.isConnected(),
+    lastAt: await drive.lastBackupAt(),
+  );
+});
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -58,17 +61,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<String?> _connect() async {
-    await DriveBackup.connect();
+    await ref.read(driveBackupProvider).connect();
     // A new or reset phone: offer the existing backup before anything else.
     if ((await ref.read(databaseProvider).counts()).parties == 0) {
-      final backup = await DriveBackup.findBackup();
+      final backup = await ref.read(driveBackupProvider).findBackup();
       if (backup != null) return _confirmAndRestore(backup);
     }
     return 'تم الربط بنجاح';
   }
 
   Future<String?> _restore() async {
-    final backup = await DriveBackup.findBackup();
+    final backup = await ref.read(driveBackupProvider).findBackup();
     if (backup == null) throw const NoBackupFound();
     return _confirmAndRestore(backup);
   }
@@ -115,7 +118,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
     );
     if (ok != true) return null;
-    final restored = await DriveBackup.restore(db);
+    final restored = await ref.read(driveBackupProvider).restore(db);
     return 'تمت الاستعادة: ${restored.parties} عميل/مورد '
         'و ${restored.orders} طلب';
   }
@@ -182,7 +185,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       onPressed: _busy
                           ? null
                           : () => _run(() async {
-                              await DriveBackup.run(ref.read(databaseProvider));
+                              await ref
+                                  .read(driveBackupProvider)
+                                  .backUp(ref.read(databaseProvider));
                               return 'تم رفع النسخة الاحتياطية';
                             }),
                       icon: _busy
@@ -203,7 +208,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       onPressed: _busy
                           ? null
                           : () => _run(() async {
-                              await DriveBackup.disconnect();
+                              await ref.read(driveBackupProvider).disconnect();
                               return 'تم إلغاء الربط';
                             }),
                       child: const Text('إلغاء ربط الحساب'),
