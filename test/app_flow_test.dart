@@ -280,6 +280,47 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   });
 
+  testWidgets('pick an item added in the items screen from the full list', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final db = AppDatabase(NativeDatabase.memory());
+    await tester.runAsync(
+      () => db.saveItemSettings(
+        'مقص ٢٨',
+        unit: 'قطعة',
+        purchasePrice: 90000,
+        salePrice: 120000,
+      ),
+    );
+    router.go('/orders/new');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db)],
+        child: const MetalLedgerApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('اختر من الأصناف'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('مقص ٢٨'));
+    await tester.pumpAndSettle();
+
+    String fieldText(String label) => tester
+        .widget<TextFormField>(find.widgetWithText(TextFormField, label))
+        .controller!
+        .text;
+    expect(fieldText('اسم الصنف *'), 'مقص ٢٨');
+    expect(fieldText('سعر الوحدة'), '1200');
+    expect(fieldText('الوحدة'), 'قطعة');
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
+
   testWidgets('a client\'s own last price wins over the general one', (
     tester,
   ) async {
