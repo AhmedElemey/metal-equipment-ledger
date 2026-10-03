@@ -399,6 +399,44 @@ void main() {
     expect((angle.stock, angle.unit, angle.lastSale), (40.0, 'قطعة', null));
   });
 
+  test('hand-set prices stand until a newer order replaces them', () async {
+    final supplier = await addParty('مورد', PartyKind.seller);
+    Future<ItemSummary> item(String name) async =>
+        (await db.watchItems().first).singleWhere((i) => i.name == name);
+
+    // A new item with prices typed in, no orders yet.
+    await db.saveItemSettings(
+      'مقص',
+      purchasePrice: 90000,
+      salePrice: 120000,
+      now: DateTime(2026, 9, 1),
+    );
+    var scissors = await item('مقص');
+    expect((scissors.lastPurchase, scissors.lastSale), (90000, 120000));
+    expect(scissors.lastPurchaseAt, DateTime(2026, 9, 1));
+
+    // Saving other settings keeps the prices.
+    await db.saveItemSettings('مقص', unit: 'قطعة', minQuantity: 2);
+    scissors = await item('مقص');
+    expect((scissors.lastPurchase, scissors.lastSale), (90000, 120000));
+
+    // An older purchase doesn't override; a newer one does.
+    await db.saveItemSettings(
+      'صاج',
+      purchasePrice: 95000,
+      now: DateTime(2026, 9, 10),
+    );
+    await addOrder(supplier, OrderKind.purchase, date: DateTime(2026, 9, 5));
+    expect((await item('صاج')).lastPurchase, 95000);
+    await addOrder(supplier, OrderKind.purchase, date: DateTime(2026, 9, 20));
+    final sheet = await item('صاج');
+    expect(
+      (sheet.lastPurchase, sheet.lastPurchaseAt),
+      (100000, DateTime(2026, 9, 20)),
+    );
+    expect(sheet.lastSale, isNull);
+  });
+
   test('expenses are listed per month, newest first', () async {
     for (final (day, amount) in [(1, 100), (15, 200), (31, 300)]) {
       await db.addExpense(

@@ -106,6 +106,13 @@ class ItemSettings extends Table {
   /// Alert when stock falls to or below this.
   RealColumn get minQuantity => real().nullable()();
 
+  /// Prices typed in by hand (piasters), with when. Each stands as the
+  /// item's last price until a newer order of that kind replaces it.
+  IntColumn get purchasePiasters => integer().nullable()();
+  DateTimeColumn get purchaseSetAt => dateTime().nullable()();
+  IntColumn get salePiasters => integer().nullable()();
+  DateTimeColumn get saleSetAt => dateTime().nullable()();
+
   @override
   Set<Column> get primaryKey => {itemName};
 }
@@ -414,7 +421,7 @@ class AppDatabase extends _$AppDatabase {
   static const fileName = 'metal_ledger';
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -459,6 +466,13 @@ class AppDatabase extends _$AppDatabase {
       if (from < 7) {
         await m.createTable(orderPhotos);
         await m.createIndex(orderPhotosOrder);
+      }
+      // Before v3, createTable above already made these columns.
+      if (from >= 3 && from < 8) {
+        await m.addColumn(itemSettings, itemSettings.purchasePiasters);
+        await m.addColumn(itemSettings, itemSettings.purchaseSetAt);
+        await m.addColumn(itemSettings, itemSettings.salePiasters);
+        await m.addColumn(itemSettings, itemSettings.saleSetAt);
       }
     },
     beforeOpen: (details) async {
@@ -734,6 +748,10 @@ class AppDatabase extends _$AppDatabase {
       '(EXISTS(SELECT 1 FROM stock_adjustments WHERE item_name = n.name) OR '
       'EXISTS(SELECT 1 FROM item_settings WHERE item_name = n.name)) AS tracked, '
       '(SELECT min_quantity FROM item_settings WHERE item_name = n.name) AS min_quantity, '
+      '(SELECT purchase_piasters FROM item_settings WHERE item_name = n.name) AS set_purchase, '
+      '(SELECT purchase_set_at FROM item_settings WHERE item_name = n.name) AS set_purchase_at, '
+      '(SELECT sale_piasters FROM item_settings WHERE item_name = n.name) AS set_sale, '
+      '(SELECT sale_set_at FROM item_settings WHERE item_name = n.name) AS set_sale_at, '
       'MAX(COALESCE((SELECT MAX(date) FROM lines WHERE name = n.name), 0), '
       'COALESCE((SELECT MAX(date) FROM stock_adjustments WHERE item_name = n.name), 0)) AS last_used '
       'FROM names n ORDER BY last_used DESC, n.name',
@@ -741,19 +759,49 @@ class AppDatabase extends _$AppDatabase {
     ).watch().map(
       (rows) => [
         for (final r in rows)
-          ItemSummary(
-            name: r.read<String>('name'),
-            unit: r.read<String>('unit'),
-            lastSale: r.readNullable<int>('last_sale'),
-            lastSaleAt: r.readNullable<DateTime>('last_sale_at'),
-            lastPurchase: r.readNullable<int>('last_purchase'),
-            lastPurchaseAt: r.readNullable<DateTime>('last_purchase_at'),
-            stock: r.read<double>('stock'),
-            tracked: r.read<bool>('tracked'),
-            minQuantity: r.readNullable<double>('min_quantity'),
+          _itemSummary(
+            r,
+            sale: _latestPrice(r, 'last_sale', 'set_sale'),
+            purchase: _latestPrice(r, 'last_purchase', 'set_purchase'),
           ),
       ],
     );
+  }
+
+  static ItemSummary _itemSummary(
+    QueryRow r, {
+    required PartyItemPrice? sale,
+    required PartyItemPrice? purchase,
+  }) => ItemSummary(
+    name: r.read<String>('name'),
+    unit: r.read<String>('unit'),
+    lastSale: sale?.price,
+    lastSaleAt: sale?.at,
+    lastPurchase: purchase?.price,
+    lastPurchaseAt: purchase?.at,
+    stock: r.read<double>('stock'),
+    tracked: r.read<bool>('tracked'),
+    minQuantity: r.readNullable<double>('min_quantity'),
+  );
+
+  /// The newer of the last order price ([fromOrders]) and the hand-set
+  /// one ([setByHand]), each read with its `_at` date.
+  static PartyItemPrice? _latestPrice(
+    QueryRow r,
+    String fromOrders,
+    String setByHand,
+  ) {
+    PartyItemPrice? read(String key) {
+      final price = r.readNullable<int>(key);
+      final at = r.readNullable<DateTime>('${key}_at');
+      return price == null || at == null ? null : (price: price, at: at);
+    }
+
+    final order = read(fromOrders);
+    final manual = read(setByHand);
+    if (order == null) return manual;
+    if (manual == null) return order;
+    return manual.at.isAfter(order.at) ? manual : order;
   }
 
   /// Records a physical count: adds the difference to reach [actual].
@@ -772,17 +820,30 @@ class AppDatabase extends _$AppDatabase {
     ),
   );
 
+  /// Saves [unit] and [minQuantity]. [purchasePrice] and [salePrice]
+  /// (piasters), when given, become the item's last prices as of [now];
+  /// when null, the hand-set prices already saved are kept.
   Future<void> saveItemSettings(
     String itemName, {
     String? unit,
     double? minQuantity,
-  }) => into(itemSettings).insertOnConflictUpdate(
-    ItemSettingsCompanion.insert(
-      itemName: itemName,
-      unit: Value(unit),
-      minQuantity: Value(minQuantity),
-    ),
-  );
+    int? purchasePrice,
+    int? salePrice,
+    DateTime? now,
+  }) {
+    final at = now ?? DateTime.now();
+    return into(itemSettings).insertOnConflictUpdate(
+      ItemSettingsCompanion.insert(
+        itemName: itemName,
+        unit: Value(unit),
+        minQuantity: Value(minQuantity),
+        purchasePiasters: Value.absentIfNull(purchasePrice),
+        purchaseSetAt: purchasePrice == null ? const Value.absent() : Value(at),
+        salePiasters: Value.absentIfNull(salePrice),
+        saleSetAt: salePrice == null ? const Value.absent() : Value(at),
+      ),
+    );
+  }
 
   /// The last price [partyId] got for each item in real orders of [kind],
   /// keyed by item name. [excludeOrderId] leaves out the order being edited.

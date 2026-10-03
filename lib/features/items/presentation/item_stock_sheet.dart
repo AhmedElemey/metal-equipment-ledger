@@ -5,8 +5,8 @@ import '../../../core/database/app_database.dart';
 import '../../../core/database/database_provider.dart';
 import '../../../core/formatters.dart';
 
-/// Stock count (جرد), unit and low-stock limit for one item — or, with
-/// [item] null, a new item with its opening stock.
+/// Stock count (جرد), unit, low-stock limit and last prices for one item —
+/// or, with [item] null, a new item with its opening stock.
 Future<void> showItemStockSheet(BuildContext context, {ItemSummary? item}) {
   return showModalBottomSheet<void>(
     context: context,
@@ -44,7 +44,23 @@ class _ItemStockSheetState extends ConsumerState<_ItemStockSheet> {
         ? ''
         : formatQuantity(widget.item!.minQuantity!),
   );
+  late final _purchase = TextEditingController(
+    text: _priceText(widget.item?.lastPurchase),
+  );
+  late final _sale = TextEditingController(
+    text: _priceText(widget.item?.lastSale),
+  );
   bool _saving = false;
+
+  static String _priceText(int? piasters) =>
+      piasters == null ? '' : piastersToInput(piasters);
+
+  /// The price typed in [field], or null if it is empty or unchanged from
+  /// [current] — so saving untouched fields doesn't restamp their date.
+  static int? _changedPrice(TextEditingController field, int? current) {
+    final price = parseMoneyToPiasters(field.text);
+    return price == current ? null : price;
+  }
 
   @override
   void dispose() {
@@ -52,6 +68,8 @@ class _ItemStockSheetState extends ConsumerState<_ItemStockSheet> {
     _unit.dispose();
     _actual.dispose();
     _min.dispose();
+    _purchase.dispose();
+    _sale.dispose();
     super.dispose();
   }
 
@@ -69,6 +87,8 @@ class _ItemStockSheetState extends ConsumerState<_ItemStockSheet> {
           name,
           unit: unit.isEmpty ? null : unit,
           minQuantity: min,
+          purchasePrice: _changedPrice(_purchase, widget.item?.lastPurchase),
+          salePrice: _changedPrice(_sale, widget.item?.lastSale),
         );
         final current = widget.item?.stock ?? 0;
         if (actual != null && actual != current) {
@@ -156,6 +176,36 @@ class _ItemStockSheetState extends ConsumerState<_ItemStockSheet> {
                   decimal: true,
                 ),
                 validator: number,
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _purchase,
+                      decoration: const InputDecoration(
+                        labelText: 'آخر سعر شراء',
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      validator: number,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _sale,
+                      decoration: const InputDecoration(
+                        labelText: 'آخر سعر بيع',
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      validator: number,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 16),
               FilledButton.icon(

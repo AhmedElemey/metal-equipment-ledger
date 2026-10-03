@@ -2669,8 +2669,61 @@ class $ItemSettingsTable extends ItemSettings
     type: DriftSqlType.double,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _purchasePiastersMeta = const VerificationMeta(
+    'purchasePiasters',
+  );
   @override
-  List<GeneratedColumn> get $columns => [itemName, unit, minQuantity];
+  late final GeneratedColumn<int> purchasePiasters = GeneratedColumn<int>(
+    'purchase_piasters',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _purchaseSetAtMeta = const VerificationMeta(
+    'purchaseSetAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> purchaseSetAt =
+      GeneratedColumn<DateTime>(
+        'purchase_set_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _salePiastersMeta = const VerificationMeta(
+    'salePiasters',
+  );
+  @override
+  late final GeneratedColumn<int> salePiasters = GeneratedColumn<int>(
+    'sale_piasters',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _saleSetAtMeta = const VerificationMeta(
+    'saleSetAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> saleSetAt = GeneratedColumn<DateTime>(
+    'sale_set_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    itemName,
+    unit,
+    minQuantity,
+    purchasePiasters,
+    purchaseSetAt,
+    salePiasters,
+    saleSetAt,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -2706,6 +2759,39 @@ class $ItemSettingsTable extends ItemSettings
         ),
       );
     }
+    if (data.containsKey('purchase_piasters')) {
+      context.handle(
+        _purchasePiastersMeta,
+        purchasePiasters.isAcceptableOrUnknown(
+          data['purchase_piasters']!,
+          _purchasePiastersMeta,
+        ),
+      );
+    }
+    if (data.containsKey('purchase_set_at')) {
+      context.handle(
+        _purchaseSetAtMeta,
+        purchaseSetAt.isAcceptableOrUnknown(
+          data['purchase_set_at']!,
+          _purchaseSetAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sale_piasters')) {
+      context.handle(
+        _salePiastersMeta,
+        salePiasters.isAcceptableOrUnknown(
+          data['sale_piasters']!,
+          _salePiastersMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sale_set_at')) {
+      context.handle(
+        _saleSetAtMeta,
+        saleSetAt.isAcceptableOrUnknown(data['sale_set_at']!, _saleSetAtMeta),
+      );
+    }
     return context;
   }
 
@@ -2727,6 +2813,22 @@ class $ItemSettingsTable extends ItemSettings
         DriftSqlType.double,
         data['${effectivePrefix}min_quantity'],
       ),
+      purchasePiasters: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}purchase_piasters'],
+      ),
+      purchaseSetAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}purchase_set_at'],
+      ),
+      salePiasters: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sale_piasters'],
+      ),
+      saleSetAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}sale_set_at'],
+      ),
     );
   }
 
@@ -2742,7 +2844,22 @@ class ItemSetting extends DataClass implements Insertable<ItemSetting> {
 
   /// Alert when stock falls to or below this.
   final double? minQuantity;
-  const ItemSetting({required this.itemName, this.unit, this.minQuantity});
+
+  /// Prices typed in by hand (piasters), with when. Each stands as the
+  /// item's last price until a newer order of that kind replaces it.
+  final int? purchasePiasters;
+  final DateTime? purchaseSetAt;
+  final int? salePiasters;
+  final DateTime? saleSetAt;
+  const ItemSetting({
+    required this.itemName,
+    this.unit,
+    this.minQuantity,
+    this.purchasePiasters,
+    this.purchaseSetAt,
+    this.salePiasters,
+    this.saleSetAt,
+  });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -2752,6 +2869,18 @@ class ItemSetting extends DataClass implements Insertable<ItemSetting> {
     }
     if (!nullToAbsent || minQuantity != null) {
       map['min_quantity'] = Variable<double>(minQuantity);
+    }
+    if (!nullToAbsent || purchasePiasters != null) {
+      map['purchase_piasters'] = Variable<int>(purchasePiasters);
+    }
+    if (!nullToAbsent || purchaseSetAt != null) {
+      map['purchase_set_at'] = Variable<DateTime>(purchaseSetAt);
+    }
+    if (!nullToAbsent || salePiasters != null) {
+      map['sale_piasters'] = Variable<int>(salePiasters);
+    }
+    if (!nullToAbsent || saleSetAt != null) {
+      map['sale_set_at'] = Variable<DateTime>(saleSetAt);
     }
     return map;
   }
@@ -2763,6 +2892,18 @@ class ItemSetting extends DataClass implements Insertable<ItemSetting> {
       minQuantity: minQuantity == null && nullToAbsent
           ? const Value.absent()
           : Value(minQuantity),
+      purchasePiasters: purchasePiasters == null && nullToAbsent
+          ? const Value.absent()
+          : Value(purchasePiasters),
+      purchaseSetAt: purchaseSetAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(purchaseSetAt),
+      salePiasters: salePiasters == null && nullToAbsent
+          ? const Value.absent()
+          : Value(salePiasters),
+      saleSetAt: saleSetAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(saleSetAt),
     );
   }
 
@@ -2775,6 +2916,10 @@ class ItemSetting extends DataClass implements Insertable<ItemSetting> {
       itemName: serializer.fromJson<String>(json['itemName']),
       unit: serializer.fromJson<String?>(json['unit']),
       minQuantity: serializer.fromJson<double?>(json['minQuantity']),
+      purchasePiasters: serializer.fromJson<int?>(json['purchasePiasters']),
+      purchaseSetAt: serializer.fromJson<DateTime?>(json['purchaseSetAt']),
+      salePiasters: serializer.fromJson<int?>(json['salePiasters']),
+      saleSetAt: serializer.fromJson<DateTime?>(json['saleSetAt']),
     );
   }
   @override
@@ -2784,6 +2929,10 @@ class ItemSetting extends DataClass implements Insertable<ItemSetting> {
       'itemName': serializer.toJson<String>(itemName),
       'unit': serializer.toJson<String?>(unit),
       'minQuantity': serializer.toJson<double?>(minQuantity),
+      'purchasePiasters': serializer.toJson<int?>(purchasePiasters),
+      'purchaseSetAt': serializer.toJson<DateTime?>(purchaseSetAt),
+      'salePiasters': serializer.toJson<int?>(salePiasters),
+      'saleSetAt': serializer.toJson<DateTime?>(saleSetAt),
     };
   }
 
@@ -2791,10 +2940,22 @@ class ItemSetting extends DataClass implements Insertable<ItemSetting> {
     String? itemName,
     Value<String?> unit = const Value.absent(),
     Value<double?> minQuantity = const Value.absent(),
+    Value<int?> purchasePiasters = const Value.absent(),
+    Value<DateTime?> purchaseSetAt = const Value.absent(),
+    Value<int?> salePiasters = const Value.absent(),
+    Value<DateTime?> saleSetAt = const Value.absent(),
   }) => ItemSetting(
     itemName: itemName ?? this.itemName,
     unit: unit.present ? unit.value : this.unit,
     minQuantity: minQuantity.present ? minQuantity.value : this.minQuantity,
+    purchasePiasters: purchasePiasters.present
+        ? purchasePiasters.value
+        : this.purchasePiasters,
+    purchaseSetAt: purchaseSetAt.present
+        ? purchaseSetAt.value
+        : this.purchaseSetAt,
+    salePiasters: salePiasters.present ? salePiasters.value : this.salePiasters,
+    saleSetAt: saleSetAt.present ? saleSetAt.value : this.saleSetAt,
   );
   ItemSetting copyWithCompanion(ItemSettingsCompanion data) {
     return ItemSetting(
@@ -2803,6 +2964,16 @@ class ItemSetting extends DataClass implements Insertable<ItemSetting> {
       minQuantity: data.minQuantity.present
           ? data.minQuantity.value
           : this.minQuantity,
+      purchasePiasters: data.purchasePiasters.present
+          ? data.purchasePiasters.value
+          : this.purchasePiasters,
+      purchaseSetAt: data.purchaseSetAt.present
+          ? data.purchaseSetAt.value
+          : this.purchaseSetAt,
+      salePiasters: data.salePiasters.present
+          ? data.salePiasters.value
+          : this.salePiasters,
+      saleSetAt: data.saleSetAt.present ? data.saleSetAt.value : this.saleSetAt,
     );
   }
 
@@ -2811,49 +2982,85 @@ class ItemSetting extends DataClass implements Insertable<ItemSetting> {
     return (StringBuffer('ItemSetting(')
           ..write('itemName: $itemName, ')
           ..write('unit: $unit, ')
-          ..write('minQuantity: $minQuantity')
+          ..write('minQuantity: $minQuantity, ')
+          ..write('purchasePiasters: $purchasePiasters, ')
+          ..write('purchaseSetAt: $purchaseSetAt, ')
+          ..write('salePiasters: $salePiasters, ')
+          ..write('saleSetAt: $saleSetAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(itemName, unit, minQuantity);
+  int get hashCode => Object.hash(
+    itemName,
+    unit,
+    minQuantity,
+    purchasePiasters,
+    purchaseSetAt,
+    salePiasters,
+    saleSetAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is ItemSetting &&
           other.itemName == this.itemName &&
           other.unit == this.unit &&
-          other.minQuantity == this.minQuantity);
+          other.minQuantity == this.minQuantity &&
+          other.purchasePiasters == this.purchasePiasters &&
+          other.purchaseSetAt == this.purchaseSetAt &&
+          other.salePiasters == this.salePiasters &&
+          other.saleSetAt == this.saleSetAt);
 }
 
 class ItemSettingsCompanion extends UpdateCompanion<ItemSetting> {
   final Value<String> itemName;
   final Value<String?> unit;
   final Value<double?> minQuantity;
+  final Value<int?> purchasePiasters;
+  final Value<DateTime?> purchaseSetAt;
+  final Value<int?> salePiasters;
+  final Value<DateTime?> saleSetAt;
   final Value<int> rowid;
   const ItemSettingsCompanion({
     this.itemName = const Value.absent(),
     this.unit = const Value.absent(),
     this.minQuantity = const Value.absent(),
+    this.purchasePiasters = const Value.absent(),
+    this.purchaseSetAt = const Value.absent(),
+    this.salePiasters = const Value.absent(),
+    this.saleSetAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ItemSettingsCompanion.insert({
     required String itemName,
     this.unit = const Value.absent(),
     this.minQuantity = const Value.absent(),
+    this.purchasePiasters = const Value.absent(),
+    this.purchaseSetAt = const Value.absent(),
+    this.salePiasters = const Value.absent(),
+    this.saleSetAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : itemName = Value(itemName);
   static Insertable<ItemSetting> custom({
     Expression<String>? itemName,
     Expression<String>? unit,
     Expression<double>? minQuantity,
+    Expression<int>? purchasePiasters,
+    Expression<DateTime>? purchaseSetAt,
+    Expression<int>? salePiasters,
+    Expression<DateTime>? saleSetAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (itemName != null) 'item_name': itemName,
       if (unit != null) 'unit': unit,
       if (minQuantity != null) 'min_quantity': minQuantity,
+      if (purchasePiasters != null) 'purchase_piasters': purchasePiasters,
+      if (purchaseSetAt != null) 'purchase_set_at': purchaseSetAt,
+      if (salePiasters != null) 'sale_piasters': salePiasters,
+      if (saleSetAt != null) 'sale_set_at': saleSetAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -2862,12 +3069,20 @@ class ItemSettingsCompanion extends UpdateCompanion<ItemSetting> {
     Value<String>? itemName,
     Value<String?>? unit,
     Value<double?>? minQuantity,
+    Value<int?>? purchasePiasters,
+    Value<DateTime?>? purchaseSetAt,
+    Value<int?>? salePiasters,
+    Value<DateTime?>? saleSetAt,
     Value<int>? rowid,
   }) {
     return ItemSettingsCompanion(
       itemName: itemName ?? this.itemName,
       unit: unit ?? this.unit,
       minQuantity: minQuantity ?? this.minQuantity,
+      purchasePiasters: purchasePiasters ?? this.purchasePiasters,
+      purchaseSetAt: purchaseSetAt ?? this.purchaseSetAt,
+      salePiasters: salePiasters ?? this.salePiasters,
+      saleSetAt: saleSetAt ?? this.saleSetAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2884,6 +3099,18 @@ class ItemSettingsCompanion extends UpdateCompanion<ItemSetting> {
     if (minQuantity.present) {
       map['min_quantity'] = Variable<double>(minQuantity.value);
     }
+    if (purchasePiasters.present) {
+      map['purchase_piasters'] = Variable<int>(purchasePiasters.value);
+    }
+    if (purchaseSetAt.present) {
+      map['purchase_set_at'] = Variable<DateTime>(purchaseSetAt.value);
+    }
+    if (salePiasters.present) {
+      map['sale_piasters'] = Variable<int>(salePiasters.value);
+    }
+    if (saleSetAt.present) {
+      map['sale_set_at'] = Variable<DateTime>(saleSetAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -2896,6 +3123,10 @@ class ItemSettingsCompanion extends UpdateCompanion<ItemSetting> {
           ..write('itemName: $itemName, ')
           ..write('unit: $unit, ')
           ..write('minQuantity: $minQuantity, ')
+          ..write('purchasePiasters: $purchasePiasters, ')
+          ..write('purchaseSetAt: $purchaseSetAt, ')
+          ..write('salePiasters: $salePiasters, ')
+          ..write('saleSetAt: $saleSetAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -7155,6 +7386,10 @@ typedef $$ItemSettingsTableCreateCompanionBuilder =
       required String itemName,
       Value<String?> unit,
       Value<double?> minQuantity,
+      Value<int?> purchasePiasters,
+      Value<DateTime?> purchaseSetAt,
+      Value<int?> salePiasters,
+      Value<DateTime?> saleSetAt,
       Value<int> rowid,
     });
 typedef $$ItemSettingsTableUpdateCompanionBuilder =
@@ -7162,6 +7397,10 @@ typedef $$ItemSettingsTableUpdateCompanionBuilder =
       Value<String> itemName,
       Value<String?> unit,
       Value<double?> minQuantity,
+      Value<int?> purchasePiasters,
+      Value<DateTime?> purchaseSetAt,
+      Value<int?> salePiasters,
+      Value<DateTime?> saleSetAt,
       Value<int> rowid,
     });
 
@@ -7186,6 +7425,26 @@ class $$ItemSettingsTableFilterComposer
 
   ColumnFilters<double> get minQuantity => $composableBuilder(
     column: $table.minQuantity,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get purchasePiasters => $composableBuilder(
+    column: $table.purchasePiasters,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get purchaseSetAt => $composableBuilder(
+    column: $table.purchaseSetAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get salePiasters => $composableBuilder(
+    column: $table.salePiasters,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get saleSetAt => $composableBuilder(
+    column: $table.saleSetAt,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -7213,6 +7472,26 @@ class $$ItemSettingsTableOrderingComposer
     column: $table.minQuantity,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get purchasePiasters => $composableBuilder(
+    column: $table.purchasePiasters,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get purchaseSetAt => $composableBuilder(
+    column: $table.purchaseSetAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get salePiasters => $composableBuilder(
+    column: $table.salePiasters,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get saleSetAt => $composableBuilder(
+    column: $table.saleSetAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ItemSettingsTableAnnotationComposer
@@ -7234,6 +7513,24 @@ class $$ItemSettingsTableAnnotationComposer
     column: $table.minQuantity,
     builder: (column) => column,
   );
+
+  GeneratedColumn<int> get purchasePiasters => $composableBuilder(
+    column: $table.purchasePiasters,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get purchaseSetAt => $composableBuilder(
+    column: $table.purchaseSetAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get salePiasters => $composableBuilder(
+    column: $table.salePiasters,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get saleSetAt =>
+      $composableBuilder(column: $table.saleSetAt, builder: (column) => column);
 }
 
 class $$ItemSettingsTableTableManager
@@ -7270,11 +7567,19 @@ class $$ItemSettingsTableTableManager
                 Value<String> itemName = const Value.absent(),
                 Value<String?> unit = const Value.absent(),
                 Value<double?> minQuantity = const Value.absent(),
+                Value<int?> purchasePiasters = const Value.absent(),
+                Value<DateTime?> purchaseSetAt = const Value.absent(),
+                Value<int?> salePiasters = const Value.absent(),
+                Value<DateTime?> saleSetAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ItemSettingsCompanion(
                 itemName: itemName,
                 unit: unit,
                 minQuantity: minQuantity,
+                purchasePiasters: purchasePiasters,
+                purchaseSetAt: purchaseSetAt,
+                salePiasters: salePiasters,
+                saleSetAt: saleSetAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -7282,11 +7587,19 @@ class $$ItemSettingsTableTableManager
                 required String itemName,
                 Value<String?> unit = const Value.absent(),
                 Value<double?> minQuantity = const Value.absent(),
+                Value<int?> purchasePiasters = const Value.absent(),
+                Value<DateTime?> purchaseSetAt = const Value.absent(),
+                Value<int?> salePiasters = const Value.absent(),
+                Value<DateTime?> saleSetAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ItemSettingsCompanion.insert(
                 itemName: itemName,
                 unit: unit,
                 minQuantity: minQuantity,
+                purchasePiasters: purchasePiasters,
+                purchaseSetAt: purchaseSetAt,
+                salePiasters: salePiasters,
+                saleSetAt: saleSetAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
