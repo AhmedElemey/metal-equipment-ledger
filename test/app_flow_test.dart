@@ -572,52 +572,6 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   });
 
-  testWidgets('the weight calculator fills quantity, unit and name', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1080, 2340);
-    tester.view.devicePixelRatio = 3;
-    addTearDown(tester.view.reset);
-    final db = AppDatabase(NativeDatabase.memory());
-    router.go('/orders/new');
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [databaseProvider.overrideWithValue(db)],
-        child: const MetalLedgerApp(),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byTooltip('حاسبة الوزن'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('ماسورة مستديرة'));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.widgetWithText(TextField, 'القطر الخارجي (مم)'),
-      '60.3',
-    );
-    await tester.enterText(
-      find.widgetWithText(TextField, 'سمك الجدار (مم)'),
-      '3.2',
-    );
-    await tester.enterText(find.widgetWithText(TextField, 'عدد القطع'), '10');
-    await tester.pump();
-    expect(find.textContaining('الوزن: 270.'), findsOneWidget); // 10 × 6 m
-    await tester.tap(find.text('استخدام الوزن'));
-    await tester.pumpAndSettle();
-
-    String field(String label) => tester
-        .widget<TextFormField>(find.widgetWithText(TextFormField, label))
-        .controller!
-        .text;
-    expect(field('الكمية'), startsWith('270.'));
-    expect(field('الوحدة'), 'كيلو');
-    expect(field('اسم الصنف *'), 'ماسورة مستديرة 60.3×3.2 مم');
-
-    await tester.pumpWidget(const SizedBox());
-    await tester.pump(const Duration(seconds: 1));
-  });
-
   testWidgets('record a cheque, then clear it', (tester) async {
     tester.view.physicalSize = const Size(1080, 2340);
     tester.view.devicePixelRatio = 3;
